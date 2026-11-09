@@ -109,7 +109,7 @@ tr:last-child td{border-bottom:0}
 .hint{border-radius:16px;padding:14px 16px;background:var(--amberbg);border:1px solid rgba(255,181,71,.35);font-size:14px;animation:rise .35s ease-out}
 .hint .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-weight:700;color:var(--amber);font-size:13px;letter-spacing:.04em;text-transform:uppercase}
 @keyframes rise{from{opacity:.0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.done{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,13,26,.35);backdrop-filter:blur(2px);animation:fade .3s}
+.doneOv{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,13,26,.35);backdrop-filter:blur(2px);animation:fade .3s}
 @keyframes fade{from{opacity:0}}
 .donecard{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px 30px;text-align:center;min-width:280px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .ring{width:120px;height:120px;margin:6px auto 12px;position:relative}
@@ -133,6 +133,13 @@ textarea{width:100%;height:220px;background:rgba(10,14,30,.6);color:var(--ink);b
 </style></head><body><div id="app"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+/* ======================= CONFIG =======================
+   Supabase: paste your project URL and anon (public) key. Leave blank to turn it off.
+   Dashboard → Project Settings → API. The anon key is meant to be public; the tables are
+   locked down by supabase/schema.sql so the page can only write, never read. */
+const SUPABASE_URL="";
+const SUPABASE_ANON_KEY="";
+
 /* ======================= GAME DATA + LOGIC (unchanged from v2) ======================= */
 const LEVELS={"A":{"1":[{"kind":"practice","rule":"top","n":4,"start":[2,1],"exit":[1,3],"opt":3,"rows":["....","....","....","..#."]},{"kind":"train","rule":"top","n":5,"start":[3,3],"exit":[2,0],"opt":6,"rows":["#.#..",".#...",".4.#.",".5...","1...."]},{"kind":"train","rule":"top","n":5,"start":[2,4],"exit":[3,0],"opt":9,"rows":["....6",".2..5",".###.","....1","52..."]},{"kind":"train","rule":"top","n":6,"start":[0,5],"exit":[4,3],"opt":10,"rows":["2.#.1.","......",".###5.",".....1","1.6.2.","#..1#."]},{"kind":"train","rule":"top","n":6,"start":[1,4],"exit":[0,0],"opt":11,"rows":["..#2..","641...","..6.13","#..#..","6..2..","1....."]},{"kind":"train","rule":"top","n":6,"start":[3,0],"exit":[5,0],"opt":10,"rows":["1...6.","..#...","5##...",".S2..#","#.....",".54..."]},{"kind":"train","rule":"top","n":6,"start":[4,1],"exit":[5,5],"opt":9,"rows":[".###..","..6..5",".#.#..","...#..","..36F.","...61."]},{"kind":"train","rule":"top","n":6,"start":[0,1],"exit":[4,2],"opt":13,"rows":["#.46SF","#44#56","....4#",".1.12.","....#.","..#41."]}],"2":[{"kind":"retention","rule":"top","n":6,"start":[1,5],"exit":[3,4],"opt":11,"rows":["#.4235",".1.#..","524.5#","..5...","....#6","......"]},{"kind":"retention","rule":"top","n":6,"start":[5,0],"exit":[1,0],"opt":12,"rows":["..5...",".#1##.","4.#5..","512.5#","#.#.51","..6..#"]},{"kind":"near","rule":"top","n":7,"start":[2,0],"exit":[4,4],"opt":14,"rows":[".S..#..","52.#...",".3F46..",".6##62.","...#.#.","5#4....","3..1..."]},{"kind":"near","rule":"top","n":7,"start":[1,3],"exit":[6,4],"opt":14,"rows":["2S.5..2",".F..##.","2..6#3.","###5.5.","#......","...24..","...#..."]},{"kind":"far","rule":"bottom","n":6,"start":[0,3],"exit":[2,5],"opt":10,"rows":["#...5.","2..3.1","#..26.",".#..3#","##....","......"]},{"kind":"far","rule":"bottom","n":6,"start":[5,5],"exit":[5,3],"opt":10,"rows":["4..15#",".#..46","......","#.#.31",".#.2..","..#.#."]}]},"B":{"1":[{"kind":"practice","rule":"top","n":4,"start":[0,2],"exit":[1,0],"opt":3,"rows":["....","....","....",".#.."]},{"kind":"train","rule":"top","n":5,"start":[3,0],"exit":[1,2],"opt":6,"rows":["4....",".....","#35..",".1..#","...#."]},{"kind":"train","rule":"top","n":5,"start":[2,3],"exit":[0,1],"opt":8,"rows":["2...3",".##64","..3..",".6251","3..3."]},{"kind":"train","rule":"top","n":6,"start":[4,1],"exit":[5,5],"opt":11,"rows":["....#.","...1..","36#...","5..#..","...1#5","..#..."]},{"kind":"train","rule":"top","n":6,"start":[5,3],"exit":[0,3],"opt":11,"rows":["....##",".6#63.",".1.6..","4.36#.","..1...","#....."]},{"kind":"train","rule":"top","n":6,"start":[0,4],"exit":[2,2],"opt":10,"rows":["..#6..","..126.","4...#S",".2###5","......","#....."]},{"kind":"train","rule":"top","n":6,"start":[0,5],"exit":[4,4],"opt":9,"rows":[".#....","#.22#.","...F31","..2##.","#..1.6",".....#"]},{"kind":"train","rule":"top","n":6,"start":[4,3],"exit":[1,0],"opt":12,"rows":[".2...2",".64#3F","5#5S..","6.3.##","..#.6.","3..2.."]}],"2":[{"kind":"retention","rule":"top","n":6,"start":[2,2],"exit":[5,0],"opt":11,"rows":["..64..","...5..","##.#.5","2.1...","63.41.","...#.."]},{"kind":"retention","rule":"top","n":6,"start":[1,4],"exit":[0,0],"opt":11,"rows":[".53...","#.1#..","2..32.","6...##","6.....",".5...#"]},{"kind":"near","rule":"top","n":7,"start":[2,6],"exit":[6,3],"opt":13,"rows":["..2..S6","...#2F.",".6..##.","......5","..66.#.","2#....5","6......"]},{"kind":"near","rule":"top","n":7,"start":[3,1],"exit":[5,2],"opt":15,"rows":["...#.#.","#6.....","..6S...","....2#.","#.#1F..","3#.#..3","..4.3.."]},{"kind":"far","rule":"bottom","n":6,"start":[3,5],"exit":[5,0],"opt":11,"rows":["1...#.",".3#.1.",".#.#26","...4..","...#2.","..46.."]},{"kind":"far","rule":"bottom","n":6,"start":[0,5],"exit":[5,5],"opt":11,"rows":["#..5..","...#..",".#..21",".....4","#...6.",".#...."]}]}};
 const D={N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]};
@@ -285,28 +292,42 @@ function showcase(host){if(!initGL())return;V.mode="show";clearBoard();const dis
 /* ======================= DATABASE ======================= */
 const CHUNK=250;
 const Cloud={db:null,uid:null,status:"connecting",w:{},timer:null,downloads:null,checked:false};
-function setCloud(s){Cloud.status=s;const el=$("#cloud");if(el){el.dataset.s=s;el.lastChild.textContent={saved:"Saved",saving:"Saving…",error:"Not synced",off:"Local only",connecting:"Connecting…"}[s]||s}}
-const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${Cloud.status}" title="Database sync status"><i></i>${{saved:"Saved",saving:"Saving…",error:"Not synced",off:"Local only",connecting:"Connecting…"}[Cloud.status]}</span>`;
-async function cloudInit(){try{const use=window.claude&&window.claude.use;if(!use){Cloud.status="off";return}
+const SB={on:false};
+const ST={db:"connecting",sb:"none"},STL={saved:"Saved",saving:"Saving…",error:"Not synced",off:"Local only",connecting:"Connecting…"};
+function overall(){const v=[ST.db,ST.sb].filter(x=>x!="none"&&x!="off");if(!v.length)return ST.db=="connecting"?"connecting":"off";
+ for(const k of["saving","error","connecting"])if(v.includes(k))return k;return"saved"}
+function setCloud(s,k="db"){ST[k]=s;const o=overall();Cloud.status=o;const el=$("#cloud");if(el){el.dataset.s=o;el.lastChild.textContent=STL[o]}}
+const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${overall()}" title="Database sync status"><i></i>${STL[overall()]}</span>`;
+async function cloudInit(){SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&!(window.claude&&window.claude.use);ST.sb=SB.on?"saved":"none";
+ try{const use=window.claude&&window.claude.use;if(!use){ST.db="off";return}
   const [db,user,dl]=await Promise.all([window.claude.use("db"),window.claude.use("user").catch(()=>null),window.claude.use("downloads").catch(()=>null)]);
   Cloud.db=db;Cloud.downloads=dl;if(user)try{Cloud.uid=await user.id()}catch(e){}
-  Cloud.status=db?"saved":"off"}catch(e){Cloud.status="off"}finally{Cloud.checked=true;setCloud(Cloud.status);if(onCloudReady)onCloudReady()}}
+  ST.db=db?"saved":"off"}catch(e){ST.db="off"}finally{if(ST.db=="connecting")ST.db="off";Cloud.checked=true;setCloud(ST.db,"db");if(onCloudReady)onCloudReady()}}
 let onCloudReady=null;
 function writeDoc(path,get){if(!Cloud.db)return Promise.resolve(false);const w=Cloud.w[path]||(Cloud.w[path]={busy:false,dirty:false,get:null,waiters:[]});w.get=get;w.dirty=true;
  return new Promise(res=>{w.waiters.push(res);if(!w.busy)pump(path,w)})}
-async function pump(path,w){w.busy=true;setCloud("saving");
+async function pump(path,w){w.busy=true;setCloud("saving","db");
  while(w.dirty){w.dirty=false;const ws=w.waiters.splice(0);let ok=false;
   for(let i=0;i<3&&!ok;i++){try{await Cloud.db.doc(path).set(w.get());ok=true}catch(e){const c=e&&e.code;if(c=="unavailable"||c=="resource_exhausted")await sleep(700*(i+1)+Math.random()*500);else{console.warn("db",path,e);break}}}
   w.failed=!ok;ws.forEach(r=>r(ok));if(!ok&&S)S.cloudTo=0}
- w.busy=false;const anyBusy=Object.values(Cloud.w).some(x=>x.busy);if(!anyBusy)setCloud(Object.values(Cloud.w).some(x=>x.failed)?"error":"saved")}
+ w.busy=false;const anyBusy=Object.values(Cloud.w).some(x=>x.busy);if(!anyBusy)setCloud(Object.values(Cloud.w).some(x=>x.failed)?"error":"saved","db")}
 const safeId=s=>String(s).replace(/[^A-Za-z0-9_-]/g,"-").slice(0,60)||"P00";
 function sessionDoc(s){return{key:s.key,pid:s.pid,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,
  status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.filter(q=>q.ok).length,
- eventCount:s.log.length,chunkSize:CHUNK,skipAfter:s.skipAfter,recordedBy:Cloud.uid||null,ua:navigator.userAgent,updatedAt:new Date().toISOString()}}
-function cloudFlush(s=S){if(!Cloud.db||!s)return Promise.resolve(true);clearTimeout(Cloud.timer);const ps=[],from=Math.floor((s.cloudTo||0)/CHUNK),to=Math.floor(Math.max(0,s.log.length-1)/CHUNK);
+ eventCount:s.log.length,chunkSize:CHUNK,screen:s.screen||null,timezone:s.tz||null,skipAfter:s.skipAfter,recordedBy:Cloud.uid||null,ua:navigator.userAgent,updatedAt:new Date().toISOString()}}
+async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:txt.length<60000,
+ headers:{apikey:SUPABASE_ANON_KEY,Authorization:"Bearer "+SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:txt});if(!r.ok)throw new Error(fn+" "+r.status+" "+(await r.text()).slice(0,200))}
+function sbSync(s=S){if(!SB.on||!s)return Promise.resolve(true);if(s.sbBusy){s.sbAgain=true;return s.sbBusy}
+ s.sbBusy=(async()=>{let ok=true;setCloud("saving","sb");
+  do{s.sbAgain=false;try{await sbRpc("rdm_save_session",{s:sessionDoc(s)});
+    while((s.sbTo||0)<s.log.length){const from=s.sbTo||0,batch=s.log.slice(from,from+150).map((e,i)=>({...e,seq:from+i}));await sbRpc("rdm_save_events",{k:s.key,evs:batch});s.sbTo=from+batch.length}
+    ok=true}catch(e){ok=false;console.warn("supabase",e)}}while(s.sbAgain&&ok);
+  s.sbBusy=null;setCloud(ok?"saved":"error","sb");if(!ok){clearTimeout(s.sbRetry);s.sbRetry=setTimeout(()=>sbSync(s),8000)}return ok})();return s.sbBusy}
+function cloudFlush(s=S){if(!s)return Promise.resolve(true);const sb=sbSync(s);if(!Cloud.db)return sb;return Promise.all([sb,dbFlush(s)]).then(a=>a.every(Boolean))}
+function dbFlush(s){clearTimeout(Cloud.timer);const ps=[],from=Math.floor((s.cloudTo||0)/CHUNK),to=Math.floor(Math.max(0,s.log.length-1)/CHUNK);
  for(let i=from;i<=to;i++){const id="c"+String(i).padStart(4,"0");ps.push(writeDoc(`sessions/${s.key}/events/${id}`,()=>({session:s.key,chunk:i,events:s.log.slice(i*CHUNK,(i+1)*CHUNK)})))}
  s.cloudTo=s.log.length;ps.push(writeDoc(`sessions/${s.key}`,()=>sessionDoc(s)));return Promise.all(ps).then(a=>a.every(Boolean))}
-function cloudTouch(){if(!Cloud.db||!S)return;clearTimeout(Cloud.timer);Cloud.timer=setTimeout(()=>cloudFlush(),1500)}
+function cloudTouch(){if(!S||(!Cloud.db&&!SB.on))return;clearTimeout(Cloud.timer);Cloud.timer=setTimeout(()=>cloudFlush(),1500)}
 async function registerParticipant(s){if(!Cloud.db)return;const ref=Cloud.db.doc("participants/"+safeId(s.pid));let cur={};try{const g=await ref.get();if(g.exists)cur=JSON.parse(JSON.stringify(g.data()))}catch(e){}
  const sessions=cur.sessions||{};sessions[s.key]={session:s.session,set:s.set,group:s.group,started:s.started,finished:s.finished||null};
  return writeDoc("participants/"+safeId(s.pid),()=>({pid:s.pid,group:cur.group||s.group,firstSeen:cur.firstSeen||s.started,sessions,updatedAt:new Date().toISOString()}))}
@@ -342,9 +363,10 @@ function setup(){S=null;L=null;G=null;Q=null;clearInterval(idleTimer);V.host=nul
  <div id="pane"></div></div></main>`;
  $("#t-run").onclick=()=>{setupTab="run";setup()};$("#t-data").onclick=()=>{setupTab="data";setup()};
  setupTab=="run"?runPane():dataPane()}
-function dbNote(){if(!Cloud.checked)return`<div class="note">Connecting to the database…</div>`;
+function dbNote(){if(SB.on)return`<div class="note ok">Saving to Supabase. Every action is sent to your Supabase project and also kept in this browser. View and export the data in the Supabase dashboard.</div>`;
+ if(!Cloud.checked)return`<div class="note">Connecting to the database…</div>`;
  return Cloud.db?`<div class="note ok">Connected to the study database. Every action is saved there and in this browser.</div>`
-  :`<div class="note bad"><b>Database not available here.</b> Data will be saved in this browser only. Open this page on claude.ai while signed in to save to the database.</div>`}
+  :`<div class="note bad"><b>No database connected.</b> Data will be saved in this browser only. Add your Supabase URL and key at the top of index.html, or open the claude.ai version while signed in.</div>`}
 function runPane(){const p=$("#pane");
  p.innerHTML=`<div class="grid2"><div>
  <label for="pid">Participant ID</label><input id="pid" value="P01" autocomplete="off">
@@ -367,19 +389,20 @@ async function lookup(){const el=$("#who");if(!el||!Cloud.db)return;const pid=$(
   if(GROUPS[d.group])$("#grp").value=d.group;if(ss.some(s=>s.session==1&&s.finished))$("#ses").value="2"}catch(e){}}
 function start(){const ses=+$("#ses").value,grp=$("#grp").value,set=$("#set").value,pid=$("#pid").value.trim()||"P00";
  S={pid,session:ses,group:grp,cond:ses==2?"none":grp,set,skipAfter:Math.max(30,+$("#skip").value||300),i:0,res:[],log:[],quiz:[],t0:now(),started:new Date().toISOString(),
-  key:`rdm2_${safeId(pid)}_s${ses}_${set}_${new Date().toISOString().replace(/[:.]/g,"-")}`,plan:levelPlan(ses,set),farIntroDone:false,cloudTo:0};
- log("session_start",{pid,session:ses,group:grp,assistance:S.cond,set,ua:navigator.userAgent});registerParticipant(S);cloudFlush();intro()}
+  key:`rdm2_${safeId(pid)}_s${ses}_${set}_${new Date().toISOString().replace(/[:.]/g,"-")}`,plan:levelPlan(ses,set),farIntroDone:false,cloudTo:0,sbTo:0,
+  screen:`${screen.width}x${screen.height} @${devicePixelRatio||1}x, window ${innerWidth}x${innerHeight}`,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||"")};
+ log("session_start",{pid,session:ses,group:grp,assistance:S.cond,set,ua:navigator.userAgent,screen:S.screen,timezone:S.tz});registerParticipant(S);cloudFlush();intro()}
 function dataPane(){const p=$("#pane"),loc=localKeys();
  p.innerHTML=`${dbNote()}
  <div class="row" style="margin-top:16px;justify-content:space-between"><h3 style="font-size:18px">Sessions in the database</h3>
  <div class="row"><button id="xs">Sessions CSV</button><button id="xl">All levels CSV</button><button id="xq">All quiz CSV</button></div></div>
- <div id="dbt" class="tbl"><table><tr><td class="mu">${Cloud.db?"Loading sessions…":"No database connection."}</td></tr></table></div>
+ <div id="dbt" class="tbl"><table><tr><td class="mu">${Cloud.db?"Loading sessions…":SB.on?"Sessions are in Supabase: open your project's Table Editor (sessions, level_results, quiz_answers, events) to view and export them as CSV.":"No database connection."}</td></tr></table></div>
  <h3 style="font-size:18px;margin-top:26px">Saved in this browser</h3><p class="mu" style="font-size:14px;margin:4px 0 0">A backup copy of every session run on this computer. Upload one if it never reached the database.</p>
- <div class="tbl">${loc.length?`<table><tr><th>Session</th><th></th></tr>${loc.map(k=>`<tr><td>${esc(k.slice(5))}</td><td style="text-align:right"><button data-up="${esc(k)}" ${Cloud.db?"":"disabled"}>Upload</button> <button data-dl="${esc(k)}">JSON</button></td></tr>`).join("")}</table>`:`<table><tr><td class="mu">Nothing saved locally.</td></tr></table>`}</div>
+ <div class="tbl">${loc.length?`<table><tr><th>Session</th><th></th></tr>${loc.map(k=>`<tr><td>${esc(k.slice(5))}</td><td style="text-align:right"><button data-up="${esc(k)}" ${Cloud.db||SB.on?"":"disabled"}>Upload</button> <button data-dl="${esc(k)}">JSON</button></td></tr>`).join("")}</table>`:`<table><tr><td class="mu">Nothing saved locally.</td></tr></table>`}</div>
  ${loc.length?`<div class="row" style="margin-top:12px"><button class="btn-ghost" id="clr">Delete local copies</button></div>`:""}`;
  p.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>exportFile(b.dataset.dl.slice(5)+".json",localStorage.getItem(b.dataset.dl)));
  p.querySelectorAll("[data-up]").forEach(b=>b.onclick=async()=>{const o=JSON.parse(localStorage.getItem(b.dataset.up));b.disabled=true;b.textContent="Uploading…";
-  const s={...o,key:o.key||b.dataset.up,cond:o.assistance,res:o.levels||[],quiz:o.quiz||[],log:o.events||[],plan:levelPlan(o.session,o.set),i:(o.levels||[]).length,cloudTo:0,skipAfter:null};
+  const s={...o,key:o.key||b.dataset.up,cond:o.assistance,res:o.levels||[],quiz:o.quiz||[],log:o.events||[],plan:levelPlan(o.session,o.set),i:(o.levels||[]).length,cloudTo:0,sbTo:0,skipAfter:null};
   const ok=await cloudFlush(s);await registerParticipant(s);b.textContent=ok?"Uploaded":"Failed, retry";b.disabled=ok});
  if($("#clr"))$("#clr").onclick=async()=>{if(await ask("Delete local copies?","This removes the backups stored in this browser. Sessions already in the database stay there.","Delete")){loc.forEach(k=>localStorage.removeItem(k));dataPane()}};
  $("#xs").onclick=()=>exp("sessions");$("#xl").onclick=()=>exp("levels");$("#xq").onclick=()=>exp("quiz");
@@ -481,7 +504,7 @@ function finish(skipped){G.done=true;G.skipped=skipped;clearInterval(idleTimer);
   undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,maxTier:G.tier,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
   uniqueStates:G.visits.size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);cloudFlush();
  G.hlCell=null;G.hlDir=null;setHighlight(null);if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
- drawPanel();setTimeout(drawDone,skipped?0:650)}
+ drawPanel();setTimeout(drawDone,skipped?0:450)}
 function next(){S.i++;G=null;if(S.i<S.plan.length)startLevel();else quizStart()}
 
 /* ---------- game screen ---------- */
@@ -509,8 +532,8 @@ function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const o=G.o,dn=G.don
  pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
  $("#un").onclick=undo;if($("#hp"))$("#hp").onclick=()=>{log("help_click");giveHint(false)};
  if($("#sk"))$("#sk").onclick=async()=>{if(await ask("Skip this level?","It will be recorded as unsolved.","Skip level"))finish(true)}}
-function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$(".done"))return;const isPrac=L.kind=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
- const el=document.createElement("div");el.className="done";
+function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$("#doneOv"))return;const isPrac=L.kind=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
+ const el=document.createElement("div");el.className="doneOv";el.id="doneOv";el.setAttribute("role","dialog");el.setAttribute("aria-label","Level complete");
  el.innerHTML=`<div class="donecard">${G.skipped?`<h2 style="font-size:26px">Level skipped</h2><p class="mu">On to the next one.</p>`:`<div class="eyebrow">${isPrac?"Practice complete":"Solved"}</div>
  <div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/><circle cx="60" cy="60" r="52" fill="none" stroke="${eff>=1?"#7ef0b8":"#ffb547"}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C*eff} ${C}"/></svg><div><span>${G.moves}<small>moves</small></span></div></div>
  <p style="margin:0">Best possible: <b>${L.opt}</b></p>${isPrac?`<p class="mu" style="margin:6px 0 0">That's the practice done. The real levels start now.</p>`:""}`}
@@ -560,9 +583,10 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
  $("#c2").onclick=()=>exportFile(base+"_events.csv",toCSV(s.log.map(r=>({...meta,...r}))));
  $("#c3").onclick=()=>exportFile(base+"_quiz.csv",toCSV(s.quiz.map(r=>({...meta,...r}))));
  $("#nw").onclick=()=>{setupTab="run";setup()};
- let ok=false;if(Cloud.db){s.cloudTo=0;ok=await cloudFlush(s);await registerParticipant(s)}
- const el=$("#sync");if(el){el.className="note "+(ok?"ok":"bad");el.textContent=ok?"Saved to the database.":Cloud.db?"Couldn't reach the database. The session is kept in this browser; upload it later from Collected data.":"No database here. The session is kept in this browser; download it below."}}
+ let ok=false;if(Cloud.db||SB.on){s.cloudTo=0;ok=await cloudFlush(s);if(Cloud.db)await registerParticipant(s)}
+ const el=$("#sync");if(el){el.className="note "+(ok?"ok":"bad");el.textContent=ok?"Saved to the database.":Cloud.db||SB.on?"Couldn't reach the database. The session is kept in this browser; upload it later from Collected data.":"No database here. The session is kept in this browser; download it below."}}
 
 window.__rdm={CFG,get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,V,Cloud};
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="hidden"&&S)cloudFlush()});
 cloudInit();setup();
 </script></body></html>

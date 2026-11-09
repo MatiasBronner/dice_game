@@ -20,12 +20,42 @@ Session 2 includes retention levels, near-transfer levels (new layouts with ↻/
 
 `index.html` is a single self-contained page (Three.js r128 loaded from cdnjs).
 
-- **Hosted version:** published as a Claude artifact with a database, so sessions save automatically when it's opened on claude.ai while signed in.
-- **Locally:** open `index.html` in a browser. Without the hosted database, sessions are saved in the browser's localStorage and can be exported from the end screen or the *Collected data* tab.
+- **GitHub Pages (with Supabase):** https://matiasbronner.github.io/dice_game/. Sessions save to your Supabase project once it's configured (see below).
+- **Claude artifact:** the claude.ai version saves to its own built-in database when opened while signed in. It can't reach Supabase, because claude.ai pages block outside connections.
+- **Locally:** open `index.html` in a browser.
 
-## Data
+Every session is also kept in the browser's localStorage as a backup and can be exported from the end screen or the *Collected data* tab.
 
-When the database is available:
+## Supabase setup
+
+1. Create a project at https://supabase.com.
+2. In **SQL Editor → New query**, paste `supabase/schema.sql` and click **Run**.
+3. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
+4. Paste them into `SUPABASE_URL` and `SUPABASE_ANON_KEY` at the top of the script in `index.html`, then commit.
+
+The anon key is designed to be public. All tables have row-level security turned on with no policies, so the page can only write through the `rdm_save_session` and `rdm_save_events` functions. Nobody can read data through the API. You view and export data in the Supabase dashboard (**Table Editor → Export to CSV**), or from analysis scripts using the service-role key, which you should never commit.
+
+### Supabase tables
+
+| Table | One row per |
+|---|---|
+| `participants` | participant (ID, group) |
+| `sessions` | session (group, assistance, level set, start/finish, status, quiz score, device info) |
+| `level_results` | level played (moves, optimal, efficiency, undos, blocks, hints, detector fires, time) |
+| `quiz_answers` | quiz question |
+| `events` | logged action: every move, block, undo, tile, hint, idle, detector fire, quiz answer. The full event is in `data` (jsonb) |
+
+Example query (efficiency on Session 2 transfer levels by group):
+
+```sql
+select s.grp, l.kind, avg(l.efficiency) as eff, avg(l.secs) as secs, count(*)
+from level_results l join sessions s using (session_key)
+where s.session = 2 group by 1, 2 order by 1, 2;
+```
+
+## Claude artifact database
+
+When the claude.ai version's database is available:
 
 - `sessions/{key}`: metadata, per-level results, quiz answers, status
 - `sessions/{key}/events/c0000…`: full event log in chunks of 250 events
