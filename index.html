@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rolling Die Maze</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: a lit tabletop stage fills the left; a slim instrument panel sits to its right. One night-table world, single theme. */
+:root{
+ --night:#121729;--night2:#1b2342;--ink:#eef1fa;--muted:#98a2c3;--line:rgba(190,205,255,.12);
+ --panel:rgba(26,33,60,.78);--raised:rgba(255,255,255,.05);
+ --amber:#ffb547;--amberbg:rgba(255,181,71,.12);--lock:#5f8bff;--spin:#a78bfa;--flip:#34d399;--exit:#7ef0b8;--danger:#ff7a7a;
+ --display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+ --body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+ color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(1200px 700px at 30% 35%,#26305a 0%,transparent 60%),radial-gradient(900px 600px at 90% 100%,#2a1f4d 0%,transparent 55%),var(--night);color:var(--ink);font:16px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+#app{min-height:100%;display:flex;flex-direction:column}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:-.01em;text-wrap:balance;margin:0}
+button,select,input{font:inherit;color:var(--ink)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--raised);border-radius:12px;padding:10px 16px;transition:background .15s,border-color .15s,transform .08s}
+button:hover:not(:disabled){background:rgba(255,255,255,.1);border-color:rgba(190,205,255,.3)}
+button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn-p{background:linear-gradient(180deg,#ffc56b,#f5a431);color:#22170a;border-color:transparent;font-weight:700}
+.btn-p:hover:not(:disabled){background:linear-gradient(180deg,#ffd085,#ffb547)}
+.btn-ghost{background:transparent}
+input,select{width:100%;background:rgba(10,14,30,.5);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+label{display:block;margin:14px 0 6px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.mu{color:var(--muted)}
+kbd{font:12px var(--body);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--raised)}
+
+/* top bar */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line)}
+.mark{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.mark svg{width:26px;height:26px}
+.barR{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:4px 11px;border-radius:99px;background:var(--raised);border:1px solid var(--line);color:var(--muted)}
+.chip.ai{color:var(--amber);border-color:rgba(255,181,71,.35);background:var(--amberbg)}
+.cloud{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.cloud i{width:8px;height:8px;border-radius:50%;background:#59617f;display:inline-block}
+.cloud[data-s="saved"] i{background:var(--flip)}.cloud[data-s="saving"] i{background:var(--amber)}.cloud[data-s="error"] i,.cloud[data-s="off"] i{background:var(--danger)}
+
+/* screens */
+.screen{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 18px}
+.sheet{width:100%;max-width:620px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px;backdrop-filter:blur(10px);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.sheet.wide{max-width:980px}
+.sheet p{max-width:62ch}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);font-weight:700}
+.tabs{display:flex;gap:6px;margin:18px 0 6px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:10px 6px;margin-right:14px;color:var(--muted)}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--amber)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}}
+.note{border:1px solid var(--line);background:rgba(10,14,30,.35);border-radius:12px;padding:12px 14px;font-size:14px;margin-top:14px}
+.note.ok{border-color:rgba(52,211,153,.35)}.note.warn{border-color:rgba(255,181,71,.4);background:var(--amberbg)}.note.bad{border-color:rgba(255,122,122,.4)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tbl{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:rgba(10,14,30,.35)}
+tr:last-child td{border-bottom:0}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+.pill.ok{color:var(--flip);border-color:rgba(52,211,153,.4)}.pill.run{color:var(--amber);border-color:rgba(255,181,71,.4)}
+
+/* intro */
+.introGrid{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:26px;align-items:center}
+@media (max-width:640px){.introGrid{grid-template-columns:1fr}}
+.showcase{aspect-ratio:1;border-radius:20px;background:radial-gradient(circle at 50% 40%,rgba(120,140,255,.18),transparent 70%);position:relative;overflow:hidden}
+.showcase canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+.bigtitle{font-size:clamp(34px,5vw,52px);line-height:1;font-weight:800;letter-spacing:-.035em;margin:6px 0 14px}
+.keys{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 20px;font-size:14px;color:var(--muted)}
+
+/* game */
+.game{flex:1;display:grid;grid-template-columns:1fr 340px;min-height:0}
+@media (max-width:860px){.game{grid-template-columns:1fr}}
+.stage{position:relative;min-height:420px;touch-action:none}
+.stage canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+@media (max-width:860px){.stage{height:min(100vw,62vh);min-height:0}}
+.legend{position:absolute;left:18px;bottom:16px;display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);pointer-events:none}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:16px;height:16px;border-radius:5px;display:inline-grid;place-items:center;font-size:11px;color:#fff;font-weight:700}
+.panel{border-left:1px solid var(--line);background:linear-gradient(180deg,rgba(26,33,60,.7),rgba(18,23,41,.85));padding:22px 20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+@media (max-width:860px){.panel{border-left:0;border-top:1px solid var(--line)}}
+.lvhead{display:flex;justify-content:space-between;align-items:flex-end}
+.lvnum{font-family:var(--display);font-size:44px;font-weight:800;line-height:.9;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.lvnum small{font-size:20px;color:var(--muted);font-weight:600;letter-spacing:0}
+.moves{text-align:right}.moves b{display:block;font-family:var(--display);font-size:30px;line-height:1;font-variant-numeric:tabular-nums}
+.moves span,.lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.track{display:flex;gap:5px}
+.track i{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.1)}
+.track i.done{background:var(--flip)}.track i.skip{background:#6b7393}.track i.now{background:var(--amber)}
+.rule{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:rgba(95,139,255,.1);border:1px solid rgba(95,139,255,.3);font-size:14px}
+.rule .sw{width:30px;height:30px;font-size:16px;background:var(--lock);flex:none}
+.faces{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.face{text-align:center;padding:10px 4px 8px;border-radius:14px;background:var(--raised);border:1px solid var(--line)}
+.face svg{width:44px;height:44px;display:block;margin:0 auto 6px}
+.face.top{border-color:rgba(255,181,71,.35)}
+.pad{display:grid;grid-template-columns:repeat(3,58px);grid-template-rows:repeat(2,52px);gap:7px;justify-content:center}
+.pad button{padding:0;font-size:18px;border-radius:14px;background:rgba(255,255,255,.06)}
+.pad .n{grid-column:2}.pad .w{grid-column:1;grid-row:2}.pad .s{grid-column:2;grid-row:2}.pad .e{grid-column:3;grid-row:2}
+.acts{display:flex;gap:8px;flex-wrap:wrap}.acts button{flex:1}
+.help{border-color:rgba(255,181,71,.45);color:var(--amber)}
+.tier{display:inline-flex;gap:3px;margin-left:6px;vertical-align:middle}.tier i{width:6px;height:6px;border-radius:50%;background:rgba(255,181,71,.25)}.tier i.on{background:var(--amber)}
+.msg{min-height:22px;font-size:14px;color:var(--amber)}
+.msg.info{color:var(--spin)}
+.hint{border-radius:16px;padding:14px 16px;background:var(--amberbg);border:1px solid rgba(255,181,71,.35);font-size:14px;animation:rise .35s ease-out}
+.hint .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-weight:700;color:var(--amber);font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes rise{from{opacity:.0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.done{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,13,26,.35);backdrop-filter:blur(2px);animation:fade .3s}
+@keyframes fade{from{opacity:0}}
+.donecard{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px 30px;text-align:center;min-width:280px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.ring{width:120px;height:120px;margin:6px auto 12px;position:relative}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring div{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:34px;font-weight:800;font-variant-numeric:tabular-nums}
+.ring div small{display:block;font-size:12px;font-family:var(--body);color:var(--muted);font-weight:400;margin-top:-8px}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;padding:30px;text-align:center;color:var(--muted)}
+
+/* quiz */
+.qdie{width:130px;height:130px;flex:none}
+.nums{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.nums button{width:56px;height:56px;font-family:var(--display);font-size:22px;font-weight:700;border-radius:14px}
+.qprog{display:flex;gap:5px;margin:4px 0 18px}.qprog i{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.1)}.qprog i.on{background:var(--amber)}
+
+/* dialog + toast */
+.dlg{position:fixed;inset:0;background:rgba(5,8,18,.6);display:grid;place-items:center;z-index:50;padding:18px}
+.dlg .sheet{max-width:440px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--night2);border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-size:14px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+textarea{width:100%;height:220px;background:rgba(10,14,30,.6);color:var(--ink);border:1px solid var(--line);border-radius:10px;font:12px ui-monospace,monospace;padding:10px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ======================= GAME DATA + LOGIC (unchanged from v2) ======================= */
+const LEVELS={"A":{"1":[{"kind":"practice","rule":"top","n":4,"start":[2,1],"exit":[1,3],"opt":3,"rows":["....","....","....","..#."]},{"kind":"train","rule":"top","n":5,"start":[3,3],"exit":[2,0],"opt":6,"rows":["#.#..",".#...",".4.#.",".5...","1...."]},{"kind":"train","rule":"top","n":5,"start":[2,4],"exit":[3,0],"opt":9,"rows":["....6",".2..5",".###.","....1","52..."]},{"kind":"train","rule":"top","n":6,"start":[0,5],"exit":[4,3],"opt":10,"rows":["2.#.1.","......",".###5.",".....1","1.6.2.","#..1#."]},{"kind":"train","rule":"top","n":6,"start":[1,4],"exit":[0,0],"opt":11,"rows":["..#2..","641...","..6.13","#..#..","6..2..","1....."]},{"kind":"train","rule":"top","n":6,"start":[3,0],"exit":[5,0],"opt":10,"rows":["1...6.","..#...","5##...",".S2..#","#.....",".54..."]},{"kind":"train","rule":"top","n":6,"start":[4,1],"exit":[5,5],"opt":9,"rows":[".###..","..6..5",".#.#..","...#..","..36F.","...61."]},{"kind":"train","rule":"top","n":6,"start":[0,1],"exit":[4,2],"opt":13,"rows":["#.46SF","#44#56","....4#",".1.12.","....#.","..#41."]}],"2":[{"kind":"retention","rule":"top","n":6,"start":[1,5],"exit":[3,4],"opt":11,"rows":["#.4235",".1.#..","524.5#","..5...","....#6","......"]},{"kind":"retention","rule":"top","n":6,"start":[5,0],"exit":[1,0],"opt":12,"rows":["..5...",".#1##.","4.#5..","512.5#","#.#.51","..6..#"]},{"kind":"near","rule":"top","n":7,"start":[2,0],"exit":[4,4],"opt":14,"rows":[".S..#..","52.#...",".3F46..",".6##62.","...#.#.","5#4....","3..1..."]},{"kind":"near","rule":"top","n":7,"start":[1,3],"exit":[6,4],"opt":14,"rows":["2S.5..2",".F..##.","2..6#3.","###5.5.","#......","...24..","...#..."]},{"kind":"far","rule":"bottom","n":6,"start":[0,3],"exit":[2,5],"opt":10,"rows":["#...5.","2..3.1","#..26.",".#..3#","##....","......"]},{"kind":"far","rule":"bottom","n":6,"start":[5,5],"exit":[5,3],"opt":10,"rows":["4..15#",".#..46","......","#.#.31",".#.2..","..#.#."]}]},"B":{"1":[{"kind":"practice","rule":"top","n":4,"start":[0,2],"exit":[1,0],"opt":3,"rows":["....","....","....",".#.."]},{"kind":"train","rule":"top","n":5,"start":[3,0],"exit":[1,2],"opt":6,"rows":["4....",".....","#35..",".1..#","...#."]},{"kind":"train","rule":"top","n":5,"start":[2,3],"exit":[0,1],"opt":8,"rows":["2...3",".##64","..3..",".6251","3..3."]},{"kind":"train","rule":"top","n":6,"start":[4,1],"exit":[5,5],"opt":11,"rows":["....#.","...1..","36#...","5..#..","...1#5","..#..."]},{"kind":"train","rule":"top","n":6,"start":[5,3],"exit":[0,3],"opt":11,"rows":["....##",".6#63.",".1.6..","4.36#.","..1...","#....."]},{"kind":"train","rule":"top","n":6,"start":[0,4],"exit":[2,2],"opt":10,"rows":["..#6..","..126.","4...#S",".2###5","......","#....."]},{"kind":"train","rule":"top","n":6,"start":[0,5],"exit":[4,4],"opt":9,"rows":[".#....","#.22#.","...F31","..2##.","#..1.6",".....#"]},{"kind":"train","rule":"top","n":6,"start":[4,3],"exit":[1,0],"opt":12,"rows":[".2...2",".64#3F","5#5S..","6.3.##","..#.6.","3..2.."]}],"2":[{"kind":"retention","rule":"top","n":6,"start":[2,2],"exit":[5,0],"opt":11,"rows":["..64..","...5..","##.#.5","2.1...","63.41.","...#.."]},{"kind":"retention","rule":"top","n":6,"start":[1,4],"exit":[0,0],"opt":11,"rows":[".53...","#.1#..","2..32.","6...##","6.....",".5...#"]},{"kind":"near","rule":"top","n":7,"start":[2,6],"exit":[6,3],"opt":13,"rows":["..2..S6","...#2F.",".6..##.","......5","..66.#.","2#....5","6......"]},{"kind":"near","rule":"top","n":7,"start":[3,1],"exit":[5,2],"opt":15,"rows":["...#.#.","#6.....","..6S...","....2#.","#.#1F..","3#.#..3","..4.3.."]},{"kind":"far","rule":"bottom","n":6,"start":[3,5],"exit":[5,0],"opt":11,"rows":["1...#.",".3#.1.",".#.#26","...4..","...#2.","..46.."]},{"kind":"far","rule":"bottom","n":6,"start":[0,5],"exit":[5,5],"opt":11,"rows":["#..5..","...#..",".#..21",".....4","#...6.",".#...."]}]}};
+const D={N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]};
+function roll(o,d){const[t,n,e]=o;return d=="N"?[7-n,t,e]:d=="S"?[n,7-t,e]:d=="E"?[7-e,n,t]:[e,n,7-t]}
+function tileFx(o,tile){const[t,n,e]=o;return tile=="spin"?[t,7-e,n]:tile=="flip"?[7-t,7-n,e]:o}
+function face(o,rule){return rule=="top"?o[0]:7-o[0]}
+function tryMove(L,r,c,o,d){const nr=r+D[d][0],nc=c+D[d][1];
+ if(nr<0||nc<0||nr>=L.n||nc>=L.n||L.g[nr][nc].w)return{ok:false,why:"wall"};
+ let no=roll(o,d);const cell=L.g[nr][nc];
+ if(cell.num&&face(no,L.rule)!=cell.num)return{ok:false,why:"num",face:face(no,L.rule),need:cell.num,nr,nc};
+ if(cell.tile)no=tileFx(no,cell.tile);return{ok:true,r:nr,c:nc,o:no,tile:cell.tile||null}}
+function bfs(L,r,c,o){const k=(r,c,o)=>r+","+c+","+o.join(""),seen=new Map([[k(r,c,o),null]]),q=[[r,c,o]];
+ for(let i=0;i<q.length;i++){const[r,c,o]=q[i];
+  if(r==L.exit[0]&&c==L.exit[1]){const p=[];let s=k(r,c,o);while(seen.get(s)){p.unshift(seen.get(s)[1]);s=seen.get(s)[0]}return p}
+  for(const d in D){const m=tryMove(L,r,c,o,d);if(!m.ok)continue;const s=k(m.r,m.c,m.o);if(!seen.has(s)){seen.set(s,[k(r,c,o),d]);q.push([m.r,m.c,m.o])}}}return null}
+const $=s=>document.querySelector(s),app=$("#app");
+const KEY={ArrowUp:"N",ArrowDown:"S",ArrowRight:"E",ArrowLeft:"W",w:"N",s:"S",d:"E",a:"W",W:"N",S:"S",D:"E",A:"W"};
+const DIRNAME={N:"up",S:"down",E:"right",W:"left"},ARROW={N:"▲",S:"▼",E:"▶",W:"◀"};
+const O0=[1,2,3];
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const CFG={autoMinGapActions:6,autoMinGapSecs:20,levelGraceSecs:25,threshold:6,idleSecs:25};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ======================= 2D die art (panel faces + quiz) ======================= */
+const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
+function faceSVG(n){return`<svg viewBox="0 0 1 1" aria-hidden="true"><rect x=".03" y=".03" width=".94" height=".94" rx=".2" fill="#f8f3e8"/><rect x=".03" y=".03" width=".94" height=".94" rx=".2" fill="none" stroke="rgba(0,0,0,.25)" stroke-width=".03"/>${PIPS[n].map(([u,v])=>`<circle cx="${u}" cy="${v}" r=".09" fill="#1b2140"/>`).join("")}</svg>`}
+function pips(n,m){return`<g transform="matrix(${m})">${PIPS[n].map(([u,v])=>`<circle cx="${u}" cy="${v}" r=".095" fill="#1b2140"/>`).join("")}</g>`}
+function dieSVG(o){const[t,n,e]=o,s=7-n;
+ return`<svg viewBox="0 0 100 100" aria-label="Die: top ${t}, front ${s}, right ${e}">
+ <polygon points="8,34 70,34 92,12 30,12" fill="#fffaf0" stroke="#1b2140" stroke-width="2" stroke-linejoin="round"/>
+ <polygon points="8,34 70,34 70,96 8,96" fill="#ece3d0" stroke="#1b2140" stroke-width="2" stroke-linejoin="round"/>
+ <polygon points="70,34 92,12 92,74 70,96" fill="#d3c8b0" stroke="#1b2140" stroke-width="2" stroke-linejoin="round"/>
+ ${pips(t,"62,0,-22,22,30,12")}${pips(s,"62,0,0,62,8,34")}${pips(e,"22,-22,0,62,70,34")}</svg>`}
+const MARK=`<svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="6" fill="#f8f3e8"/><circle cx="8" cy="8" r="2.2" fill="#1b2140"/><circle cx="13" cy="13" r="2.2" fill="#ffb547"/><circle cx="18" cy="18" r="2.2" fill="#1b2140"/></svg>`;
+
+/* ======================= 3D VIEW ======================= */
+const V={ok:false,R:null,scene:null,cam:null,board:null,die:null,dieS:.84,n:0,q:[],cur:null,locks:{},tiles:{},ring:null,arrow:null,flag:null,exitMat:null,parts:[],mode:"none",host:null,ro:null,flash:[]};
+const lin=h=>new THREE.Color(h).convertSRGBToLinear();
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function roundedBox(w,h,d,r,seg=12){const g=new THREE.BoxGeometry(w,h,d,seg,seg,seg),p=g.attributes.position,nr=g.attributes.normal,uv=g.attributes.uv,a=1/3;
+ const H=[w/2,h/2,d/2],remap=(t,half)=>{const s=Math.sign(t),u=Math.abs(t);return s*(u<=a?u/a*(half-r):(half-r)+(u-a)/(1-a)*r)};
+ const v=new THREE.Vector3(),inn=new THREE.Vector3(),dir=new THREE.Vector3();
+ for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i);v.set(remap(v.x/H[0],H[0]),remap(v.y/H[1],H[1]),remap(v.z/H[2],H[2]));
+  inn.set(clamp(v.x,-H[0]+r,H[0]-r),clamp(v.y,-H[1]+r,H[1]-r),clamp(v.z,-H[2]+r,H[2]-r));dir.subVectors(v,inn);
+  if(dir.lengthSq()<1e-12)dir.fromBufferAttribute(nr,i);dir.normalize();p.setXYZ(i,inn.x+dir.x*r,inn.y+dir.y*r,inn.z+dir.z*r);nr.setXYZ(i,dir.x,dir.y,dir.z);
+  const uu=uv.getX(i)*2-1,vv=uv.getY(i)*2-1,f=r/(w/2),g2=t=>{const s=Math.sign(t),u=Math.abs(t);return s*(u<=a?u/a*(1-f):(1-f)+(u-a)/(1-a)*f)};
+  uv.setXY(i,(g2(uu)+1)/2,(g2(vv)+1)/2)}
+ p.needsUpdate=true;nr.needsUpdate=true;uv.needsUpdate=true;return g}
+const TS=256;
+function tex(draw){const c=document.createElement("canvas");c.width=c.height=TS;const x=c.getContext("2d");draw(x,TS);const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=8;return t}
+function grad(x,a,b){const g=x.createLinearGradient(0,0,TS,TS);g.addColorStop(0,a);g.addColorStop(1,b);x.fillStyle=g;x.fillRect(0,0,TS,TS);
+ x.strokeStyle="rgba(255,255,255,.10)";x.lineWidth=6;x.strokeRect(14,14,TS-28,TS-28)}
+function dieFaceTex(n){return tex((x,S)=>{const g=x.createRadialGradient(S/2,S/2,S*.1,S/2,S/2,S*.75);g.addColorStop(0,"#fffcf4");g.addColorStop(1,"#eadfc8");x.fillStyle=g;x.fillRect(0,0,S,S);
+ PIPS[n].forEach(([u,v])=>{const cx=u*S,cy=v*S,r=S*.085,pg=x.createRadialGradient(cx-r*.3,cy-r*.3,r*.1,cx,cy,r);pg.addColorStop(0,n==1?"#3a2a12":"#2b3360");pg.addColorStop(1,n==1?"#0f0a04":"#0d1128");
+  x.fillStyle=pg;x.beginPath();x.arc(cx,cy,n==1?r*1.25:r,0,7);x.fill();x.strokeStyle="rgba(255,255,255,.55)";x.lineWidth=2;x.beginPath();x.arc(cx,cy+1.5,(n==1?r*1.25:r)+1,0.2,Math.PI-0.2);x.stroke()})})}
+const TT={};
+function tileTextures(){if(TT.plain)return TT;
+ TT.plain=tex(x=>grad(x,"#4a5580","#3a4469"));
+ TT.exit=tex((x,S)=>{grad(x,"#5fe3b0","#2aa77a");x.strokeStyle="rgba(255,255,255,.55)";x.lineWidth=7;x.setLineDash([16,12]);x.strokeRect(34,34,S-68,S-68);x.setLineDash([]);
+  x.fillStyle="#fff";x.fillRect(96,70,10,120);x.beginPath();x.moveTo(106,72);x.lineTo(172,96);x.lineTo(106,122);x.fill()});
+ TT.spin=tex((x,S)=>{grad(x,"#9b7cf6","#6a4bd4");x.strokeStyle="#fff";x.lineWidth=18;x.lineCap="round";const c=S/2,R=64,a0=-Math.PI*1.1,a1=Math.PI*0.55;
+  x.beginPath();x.arc(c,c,R,a0,a1,false);x.stroke();const ex=c+R*Math.cos(a1),ey=c+R*Math.sin(a1),tx=-Math.sin(a1),ty=Math.cos(a1);
+  x.fillStyle="#fff";x.beginPath();x.moveTo(ex+tx*34,ey+ty*34);x.lineTo(ex-ty*30-tx*6,ey+tx*30-ty*6);x.lineTo(ex+ty*30-tx*6,ey-tx*30-ty*6);x.fill()});
+ TT.flip=tex((x,S)=>{grad(x,"#3ad4a0","#179068");x.fillStyle="#fff";x.strokeStyle="#fff";x.lineWidth=16;x.lineCap="round";
+  const arr=(cx,up)=>{const y0=up?190:66,y1=up?92:164;x.beginPath();x.moveTo(cx,y0);x.lineTo(cx,y1);x.stroke();const s=up?-1:1;x.beginPath();x.moveTo(cx,y1+s*30);x.lineTo(cx-30,y1-s*4);x.lineTo(cx+30,y1-s*4);x.fill()};arr(96,true);arr(160,false)});
+ return TT}
+function lockTex(n){return tex((x,S)=>{grad(x,"#5f8bff","#3556c4");x.fillStyle="rgba(255,255,255,.16)";x.beginPath();x.arc(S/2,S/2,84,0,7);x.fill();
+ x.fillStyle="#fff";x.font=`800 150px "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif`;x.textAlign="center";x.textBaseline="middle";x.shadowColor="rgba(0,0,30,.35)";x.shadowBlur=10;x.shadowOffsetY=4;x.fillText(n,S/2,S/2+8)})}
+function quatFor(o){const N={1:[0,1,0],6:[0,-1,0],2:[0,0,-1],5:[0,0,1],3:[1,0,0],4:[-1,0,0]},v=a=>new THREE.Vector3(...a);
+ const[t,n,e]=o,m=new THREE.Matrix4().makeBasis(v(N[e]),v(N[t]),v(N[n]).negate()).transpose();return new THREE.Quaternion().setFromRotationMatrix(m)}
+const AX={E:[[0,0,1],-1],W:[[0,0,1],1],S:[[1,0,0],1],N:[[1,0,0],-1]};
+function initGL(){if(V.R)return V.ok;try{
+ const R=V.R=new THREE.WebGLRenderer({antialias:true,alpha:true});R.setPixelRatio(Math.min(devicePixelRatio||1,2));R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;
+ R.outputEncoding=THREE.sRGBEncoding;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.08;
+ const sc=V.scene=new THREE.Scene();V.cam=new THREE.PerspectiveCamera(32,1,.1,200);
+ sc.add(new THREE.HemisphereLight(0xdfe6ff,0x1a1f38,.62));
+ const key=V.key=new THREE.DirectionalLight(0xfff0d8,1.35);key.position.set(-4,10,6);key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.bias=-.0006;key.shadow.radius=4;sc.add(key);sc.add(key.target);
+ const fill=new THREE.DirectionalLight(0x8ea6ff,.45);fill.position.set(6,4,-5);sc.add(fill);
+ const rim=new THREE.PointLight(0xffb547,.35,30);rim.position.set(0,5,-6);sc.add(rim);
+ const mats=[3,4,1,6,5,2].map(n=>new THREE.MeshPhysicalMaterial({map:dieFaceTex(n),roughness:.34,clearcoat:.7,clearcoatRoughness:.22}));
+ V.die=new THREE.Mesh(roundedBox(V.dieS,V.dieS,V.dieS,.11,12),mats);V.die.castShadow=true;sc.add(V.die);
+ V.ring=new THREE.Mesh(new THREE.RingGeometry(.36,.47,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:lin(0xffb547),transparent:true,opacity:.9,depthWrite:false}));V.ring.visible=false;sc.add(V.ring);
+ const sh=new THREE.Shape();sh.moveTo(0,.34);sh.lineTo(.24,.06);sh.lineTo(.09,.06);sh.lineTo(.09,-.3);sh.lineTo(-.09,-.3);sh.lineTo(-.09,.06);sh.lineTo(-.24,.06);sh.closePath();
+ V.arrow=new THREE.Mesh(new THREE.ShapeGeometry(sh).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:lin(0xffb547),transparent:true,opacity:.95,depthWrite:false}));V.arrow.visible=false;sc.add(V.arrow);
+ V.ok=true;requestAnimationFrame(loop)}catch(e){V.ok=false}return V.ok}
+function mount(host){if(!initGL()){host.innerHTML=`<div class="nogl">This browser can't draw the 3D board (WebGL is off). Try Chrome, Edge or Firefox with hardware acceleration on.</div>`;return}
+ V.host=host;host.prepend(V.R.domElement);if(V.ro)V.ro.disconnect();V.ro=new ResizeObserver(fit);V.ro.observe(host);fit()}
+function fit(){if(!V.host)return;const w=V.host.clientWidth,h=V.host.clientHeight;if(!w||!h)return;V.R.setSize(w,h,false);V.cam.aspect=w/h;
+ const f=Math.tan(THREE.MathUtils.degToRad(V.cam.fov/2));
+ if(V.mode=="show"){V.cam.position.set(1.5,2.1,2.6);V.cam.lookAt(0,.35,0)}
+ else{const n=V.n,dir=new THREE.Vector3(.3,1.28,1).normalize(),dv=(n*.62)/f,dh=(n*.66)/(f*V.cam.aspect),dist=Math.max(dv,dh)+n*.35;
+  V.cam.position.copy(dir.multiplyScalar(dist));V.cam.lookAt(0,-.1,n*.04)}
+ V.cam.updateProjectionMatrix()}
+const W=(r,c)=>[c-(V.n-1)/2,r-(V.n-1)/2];
+function clearBoard(){if(V.board){V.scene.remove(V.board);V.board.traverse(o=>{if(o.geometry)o.geometry.dispose()})}V.board=new THREE.Group();V.scene.add(V.board);V.parts.forEach(m=>{V.scene.remove(m);m.material.dispose()});V.parts=[];V.locks={};V.tiles={};V.flag=null;V.exitMat=null;V.q=[];V.cur=null;setHighlight(null,null)}
+function buildBoard(L){V.mode="play";V.n=L.n;clearBoard();const T=tileTextures(),n=L.n;
+ const base=new THREE.Mesh(roundedBox(n+.55,.42,n+.55,.2,8),new THREE.MeshStandardMaterial({color:lin(0x1d2442),roughness:.85}));base.position.y=-.33;base.receiveShadow=true;V.board.add(base);
+ const side=new THREE.MeshStandardMaterial({color:lin(0x2c3456),roughness:.8}),tileG=roundedBox(.93,.14,.93,.05,12),wallG=roundedBox(.93,.72,.93,.09,10);
+ const wallSide=new THREE.MeshStandardMaterial({color:lin(0x151a31),roughness:.7}),wallTop=new THREE.MeshStandardMaterial({color:lin(0x2a3157),roughness:.6});
+ for(let r=0;r<n;r++)for(let c=0;c<n;c++){const e=L.g[r][c],[x,z]=W(r,c),ex=r==L.exit[0]&&c==L.exit[1];
+  if(e.w){const m=new THREE.Mesh(wallG,[wallSide,wallSide,wallTop,wallSide,wallSide,wallSide]);m.position.set(x,.36-.14,z);m.castShadow=m.receiveShadow=true;V.board.add(m);continue}
+  let top;if(e.num)top=new THREE.MeshStandardMaterial({map:lockTex(e.num),roughness:.5,emissive:lin(0x000000)});
+  else if(e.tile)top=new THREE.MeshStandardMaterial({map:T[e.tile],roughness:.5,emissive:lin(0x000000)});
+  else if(ex)top=V.exitMat=new THREE.MeshStandardMaterial({map:T.exit,roughness:.45,emissive:lin(0x2aa77a),emissiveIntensity:.25});
+  else top=new THREE.MeshStandardMaterial({map:T.plain,roughness:.75});
+  const m=new THREE.Mesh(tileG,[side,side,top,side,side,side]);m.position.set(x,-.07,z);m.receiveShadow=true;V.board.add(m);V.tiles[r+","+c]=top;if(e.num)V.locks[r+","+c]=top}
+ const[fx,fz]=W(...L.exit),fg=new THREE.Group();fg.position.set(fx-.3,0,fz+.3);
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,1.05,12),new THREE.MeshStandardMaterial({color:lin(0xeeeeee),metalness:.6,roughness:.3}));pole.position.y=.52;pole.castShadow=true;fg.add(pole);
+ const fs=new THREE.Shape();fs.moveTo(0,0);fs.lineTo(.42,-.13);fs.lineTo(0,-.27);const flag=new THREE.Mesh(new THREE.ShapeGeometry(fs),new THREE.MeshStandardMaterial({color:lin(0x7ef0b8),emissive:lin(0x2aa77a),emissiveIntensity:.4,side:THREE.DoubleSide}));
+ flag.position.set(.02,1.02,0);flag.castShadow=true;fg.add(flag);V.board.add(fg);V.flag=flag;
+ const k=V.key;k.shadow.camera.left=k.shadow.camera.bottom=-n*.9;k.shadow.camera.right=k.shadow.camera.top=n*.9;k.shadow.camera.near=1;k.shadow.camera.far=40;k.shadow.camera.updateProjectionMatrix();
+ V.die.visible=true;fit()}
+function placeDie(r,c,o){const[x,z]=W(r,c);V.die.position.set(x,V.dieS/2,z);V.die.quaternion.copy(quatFor(o));V.die.scale.setScalar(1)}
+function setHighlight(cell,dir){if(!V.ring)return;if(!cell){V.ring.visible=V.arrow.visible=false;return}const[x,z]=W(...cell);V.ring.position.set(x,.012,z);V.ring.visible=true;
+ if(dir){V.arrow.position.set(x,.02,z);V.arrow.rotation.y={N:0,W:Math.PI/2,S:Math.PI,E:-Math.PI/2}[dir];V.arrow.visible=true}else V.arrow.visible=false}
+function flashTile(key,color,ms=600){const m=V.tiles[key];if(m)V.flash.push({m,color:new THREE.Color(color),t0:performance.now(),ms,base:m===V.exitMat?.25:0})}
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+/* animation steps */
+function aRoll(d,r0,c0,o0,r1,c1,o1){const[a,s]=AX[d],axis=new THREE.Vector3(...a),q0=quatFor(o0),p0=W(r0,c0),p1=W(r1,c1),h=V.dieS/2,lift=h*(Math.SQRT2-1);
+ V.q.push({dur:190,step:p=>{const e=ease(p);V.die.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(axis,s*Math.PI/2*e).multiply(q0));
+  V.die.position.set(p0[0]+(p1[0]-p0[0])*e,h+lift*Math.sin(Math.PI*e),p0[1]+(p1[1]-p0[1])*e)},end:()=>placeDie(r1,c1,o1)})}
+function aTile(type,r,c,o0,o1){const q0=quatFor(o0),h=V.dieS/2,axis=type=="spin"?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0),ang=type=="spin"?-Math.PI/2:Math.PI,[x,z]=W(r,c);
+ V.q.push({dur:type=="spin"?380:460,start:()=>flashTile(r+","+c,type=="spin"?0xa78bfa:0x34d399,700),step:p=>{const e=ease(p);V.die.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(axis,ang*e).multiply(q0));
+  V.die.position.set(x,h+(type=="spin"?.12:.75)*Math.sin(Math.PI*p),z)},end:()=>placeDie(r,c,o1)})}
+function aBump(d,r,c,o,lockKey){const[a,s]=AX[d],axis=new THREE.Vector3(...a),q0=quatFor(o),[x,z]=W(r,c),[dr,dc]=D[d],h=V.dieS/2;
+ V.q.push({dur:300,start:()=>{if(lockKey)flashTile(lockKey,0xff4d4d,650)},step:p=>{const k=Math.sin(Math.PI*p);V.die.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(axis,s*.28*k).multiply(q0));
+  V.die.position.set(x+dc*.1*k,h+.04*k,z+dr*.1*k)},end:()=>placeDie(r,c,o)})}
+function aSlide(r1,c1,o1){let p0,q0;const p1=W(r1,c1),q1=quatFor(o1),h=V.dieS/2;
+ V.q.push({dur:220,start:()=>{p0=V.die.position.clone();q0=V.die.quaternion.clone()},step:p=>{const e=ease(p);V.die.quaternion.copy(q0.clone().slerp(q1,e));V.die.position.set(p0.x+(p1[0]-p0.x)*e,h+.35*Math.sin(Math.PI*e),p0.z+(p1[1]-p0.z)*e)},end:()=>placeDie(r1,c1,o1)})}
+function confetti(r,c){const[x,z]=W(r,c),cols=[0xffb547,0x7ef0b8,0x5f8bff,0xa78bfa,0xffffff,0xff7a7a],g=new THREE.PlaneGeometry(.07,.12);
+ for(let i=0;i<90;i++){const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:cols[i%cols.length],side:THREE.DoubleSide,transparent:true}));m.position.set(x,.9,z);
+  const a=Math.random()*Math.PI*2,sp=1.2+Math.random()*2.2;m.userData={v:new THREE.Vector3(Math.cos(a)*sp,3+Math.random()*3.5,Math.sin(a)*sp),w:new THREE.Vector3(Math.random()*9,Math.random()*9,Math.random()*9),t:0};V.scene.add(m);V.parts.push(m)}}
+let lastT=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-lastT)/1000);lastT=now;if(!V.host||!V.host.isConnected)return;
+ if(!V.cur&&V.q.length){V.cur=V.q.shift();V.cur.t0=now;V.cur.fast=V.q.length>0?2.4:1;V.cur.start&&V.cur.start()}
+ if(V.cur){const p=Math.min(1,(now-V.cur.t0)/(V.cur.dur/V.cur.fast));V.cur.step(p);if(p>=1){V.cur.end&&V.cur.end();V.cur=null}}
+ if(V.mode=="show"){V.die.rotation.x+=dt*.35;V.die.rotation.y+=dt*.5;V.die.position.y=.42+Math.sin(now/700)*.06}
+ const pulse=.5+.5*Math.sin(now/260);if(V.ring.visible){V.ring.material.opacity=.45+.5*pulse;V.ring.scale.setScalar(1+.05*pulse)}
+ if(V.flag)V.flag.rotation.y=Math.sin(now/420)*.35;
+ if(V.exitMat&&!V.flash.some(f=>f.m===V.exitMat))V.exitMat.emissiveIntensity=.18+.22*(.5+.5*Math.sin(now/600));
+ V.flash=V.flash.filter(f=>{const k=(now-f.t0)/f.ms;if(k>=1){if(f.m!==V.exitMat)f.m.emissive.setRGB(0,0,0);return false}f.m.emissive.copy(f.color);f.m.emissiveIntensity=(1-k)*.9+f.base*k;return true});
+ V.parts=V.parts.filter(m=>{const u=m.userData;u.t+=dt;u.v.y-=9.8*dt;m.position.addScaledVector(u.v,dt);m.rotation.x+=u.w.x*dt;m.rotation.y+=u.w.y*dt;m.material.opacity=Math.max(0,1-u.t/1.9);
+  if(u.t>1.9){V.scene.remove(m);m.material.dispose();return false}return true});
+ V.R.render(V.scene,V.cam)}
+function showcase(host){if(!initGL())return;V.mode="show";clearBoard();const disc=new THREE.Mesh(new THREE.CircleGeometry(1.2,48).rotateX(-Math.PI/2),new THREE.ShadowMaterial({opacity:.35}));disc.receiveShadow=true;V.board.add(disc);
+ V.die.position.set(0,.42,0);V.die.quaternion.copy(quatFor([1,2,3]));V.die.rotation.set(-.4,.6,.2);V.die.visible=true;
+ const k=V.key;k.shadow.camera.left=k.shadow.camera.bottom=-3;k.shadow.camera.right=k.shadow.camera.top=3;k.shadow.camera.updateProjectionMatrix();mount(host)}
+
+/* ======================= DATABASE ======================= */
+const CHUNK=250;
+const Cloud={db:null,uid:null,status:"connecting",w:{},timer:null,downloads:null,checked:false};
+function setCloud(s){Cloud.status=s;const el=$("#cloud");if(el){el.dataset.s=s;el.lastChild.textContent={saved:"Saved",saving:"Saving…",error:"Not synced",off:"Local only",connecting:"Connecting…"}[s]||s}}
+const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${Cloud.status}" title="Database sync status"><i></i>${{saved:"Saved",saving:"Saving…",error:"Not synced",off:"Local only",connecting:"Connecting…"}[Cloud.status]}</span>`;
+async function cloudInit(){try{const use=window.claude&&window.claude.use;if(!use){Cloud.status="off";return}
+  const [db,user,dl]=await Promise.all([window.claude.use("db"),window.claude.use("user").catch(()=>null),window.claude.use("downloads").catch(()=>null)]);
+  Cloud.db=db;Cloud.downloads=dl;if(user)try{Cloud.uid=await user.id()}catch(e){}
+  Cloud.status=db?"saved":"off"}catch(e){Cloud.status="off"}finally{Cloud.checked=true;setCloud(Cloud.status);if(onCloudReady)onCloudReady()}}
+let onCloudReady=null;
+function writeDoc(path,get){if(!Cloud.db)return Promise.resolve(false);const w=Cloud.w[path]||(Cloud.w[path]={busy:false,dirty:false,get:null,waiters:[]});w.get=get;w.dirty=true;
+ return new Promise(res=>{w.waiters.push(res);if(!w.busy)pump(path,w)})}
+async function pump(path,w){w.busy=true;setCloud("saving");
+ while(w.dirty){w.dirty=false;const ws=w.waiters.splice(0);let ok=false;
+  for(let i=0;i<3&&!ok;i++){try{await Cloud.db.doc(path).set(w.get());ok=true}catch(e){const c=e&&e.code;if(c=="unavailable"||c=="resource_exhausted")await sleep(700*(i+1)+Math.random()*500);else{console.warn("db",path,e);break}}}
+  w.failed=!ok;ws.forEach(r=>r(ok));if(!ok&&S)S.cloudTo=0}
+ w.busy=false;const anyBusy=Object.values(Cloud.w).some(x=>x.busy);if(!anyBusy)setCloud(Object.values(Cloud.w).some(x=>x.failed)?"error":"saved")}
+const safeId=s=>String(s).replace(/[^A-Za-z0-9_-]/g,"-").slice(0,60)||"P00";
+function sessionDoc(s){return{key:s.key,pid:s.pid,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,
+ status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.filter(q=>q.ok).length,
+ eventCount:s.log.length,chunkSize:CHUNK,skipAfter:s.skipAfter,recordedBy:Cloud.uid||null,ua:navigator.userAgent,updatedAt:new Date().toISOString()}}
+function cloudFlush(s=S){if(!Cloud.db||!s)return Promise.resolve(true);clearTimeout(Cloud.timer);const ps=[],from=Math.floor((s.cloudTo||0)/CHUNK),to=Math.floor(Math.max(0,s.log.length-1)/CHUNK);
+ for(let i=from;i<=to;i++){const id="c"+String(i).padStart(4,"0");ps.push(writeDoc(`sessions/${s.key}/events/${id}`,()=>({session:s.key,chunk:i,events:s.log.slice(i*CHUNK,(i+1)*CHUNK)})))}
+ s.cloudTo=s.log.length;ps.push(writeDoc(`sessions/${s.key}`,()=>sessionDoc(s)));return Promise.all(ps).then(a=>a.every(Boolean))}
+function cloudTouch(){if(!Cloud.db||!S)return;clearTimeout(Cloud.timer);Cloud.timer=setTimeout(()=>cloudFlush(),1500)}
+async function registerParticipant(s){if(!Cloud.db)return;const ref=Cloud.db.doc("participants/"+safeId(s.pid));let cur={};try{const g=await ref.get();if(g.exists)cur=JSON.parse(JSON.stringify(g.data()))}catch(e){}
+ const sessions=cur.sessions||{};sessions[s.key]={session:s.session,set:s.set,group:s.group,started:s.started,finished:s.finished||null};
+ return writeDoc("participants/"+safeId(s.pid),()=>({pid:s.pid,group:cur.group||s.group,firstSeen:cur.firstSeen||s.started,sessions,updatedAt:new Date().toISOString()}))}
+async function exportFile(name,text){if(Cloud.downloads){try{await Cloud.downloads.save({filename:name,data:text});return}catch(e){if(e&&e.code=="declined")return}}
+ try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text]));a.download=name;document.body.appendChild(a);a.click();a.remove()}catch(e){}
+ showCopy(name,text)}
+function showCopy(name,text){const d=document.createElement("div");d.className="dlg";d.innerHTML=`<div class="sheet"><h3>${esc(name)}</h3><p class="mu">If the download didn't start, copy this and paste it into a file.</p><textarea readonly></textarea><div class="row" style="margin-top:12px"><button class="btn-p" data-c>Copy</button><button data-x>Close</button></div></div>`;
+ d.querySelector("textarea").value=text;document.body.appendChild(d);d.querySelector("[data-x]").onclick=()=>d.remove();d.querySelector("[data-c]").onclick=async()=>{try{await navigator.clipboard.writeText(text);toast("Copied")}catch(e){d.querySelector("textarea").select()}}}
+function toast(t){const e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200)}
+function ask(title,body,ok="Confirm"){return new Promise(res=>{const d=document.createElement("div");d.className="dlg";d.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><h3>${title}</h3><p class="mu">${body}</p><div class="row" style="margin-top:16px"><button class="btn-p" data-y>${ok}</button><button data-n>Cancel</button></div></div>`;
+ document.body.appendChild(d);DLG=true;const done=v=>{d.remove();DLG=false;res(v)};d.querySelector("[data-y]").onclick=()=>done(true);d.querySelector("[data-n]").onclick=()=>done(false);d.querySelector("[data-n]").focus()})}
+let DLG=false;
+
+/* ======================= SESSION STATE ======================= */
+function loadLevel(def){const g=def.rows.map(r=>[...r].map(ch=>({w:ch=="#",num:/[1-6]/.test(ch)?+ch:0,tile:ch=="S"?"spin":ch=="F"?"flip":null})));
+ return{n:def.n,g,start:def.start,exit:def.exit,rule:def.rule,kind:def.kind,opt:def.opt}}
+function levelPlan(session,set){return LEVELS[set][session]}
+let S=null,L=null,G=null,Q=null,idleTimer=null;
+const now=()=>Date.now();
+function log(type,d={}){if(!S)return;S.log.push({t:now()-S.t0,at:new Date().toISOString(),lv:S.i,kind:L?L.kind:null,...d,type});save();cloudTouch()}
+function save(){try{localStorage.setItem(S.key,JSON.stringify(exportObj()))}catch(e){}}
+function exportObj(s=S){return{key:s.key,pid:s.pid,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,levels:s.res,quiz:s.quiz,events:s.log}}
+const localKeys=()=>{try{return Object.keys(localStorage).filter(k=>k.startsWith("rdm2_")).sort().reverse()}catch(e){return[]}};
+const GROUPS={none:"No assistance",user:"User-initiated",adaptive:"Adaptive"};
+
+/* ======================= SETUP + DATA ======================= */
+let setupTab="run",sessUnsub=null,sessRows=null,sessErr="";
+function bar(right=""){return`<header class="bar"><div class="mark">${MARK}Rolling Die Maze</div><div class="barR">${right}${cloudChip()}</div></header>`}
+function setup(){S=null;L=null;G=null;Q=null;clearInterval(idleTimer);V.host=null;
+ app.innerHTML=bar(`<span class="chip">Experimenter</span>`)+`<main class="screen"><div class="sheet wide">
+ <div class="eyebrow">Study console</div><h1 style="font-size:32px;margin-top:4px">Set up a session</h1>
+ <div class="tabs" role="tablist"><button role="tab" id="t-run" aria-selected="${setupTab=="run"}">Run a session</button><button role="tab" id="t-data" aria-selected="${setupTab=="data"}">Collected data</button></div>
+ <div id="pane"></div></div></main>`;
+ $("#t-run").onclick=()=>{setupTab="run";setup()};$("#t-data").onclick=()=>{setupTab="data";setup()};
+ setupTab=="run"?runPane():dataPane()}
+function dbNote(){if(!Cloud.checked)return`<div class="note">Connecting to the database…</div>`;
+ return Cloud.db?`<div class="note ok">Connected to the study database. Every action is saved there and in this browser.</div>`
+  :`<div class="note bad"><b>Database not available here.</b> Data will be saved in this browser only. Open this page on claude.ai while signed in to save to the database.</div>`}
+function runPane(){const p=$("#pane");
+ p.innerHTML=`<div class="grid2"><div>
+ <label for="pid">Participant ID</label><input id="pid" value="P01" autocomplete="off">
+ <label for="grp">Participant's group</label><select id="grp"><option value="none">No assistance</option><option value="user">User-initiated (Help button)</option><option value="adaptive">Adaptive (automatic hints)</option></select>
+ <label for="ses">Session</label><select id="ses"><option value="1">Session 1: training (assistance per group)</option><option value="2">Session 2: delayed test (no assistance for anyone)</option></select>
+ </div><div>
+ <label for="set">Level set</label><select id="set"><option>A</option><option>B</option></select>
+ <label for="skip">Allow skipping a level after (seconds)</label><input id="skip" type="number" min="30" step="30" value="300">
+ <div id="who"></div></div></div>
+ <p class="mu" style="font-size:14px;margin-top:16px">Use the opposite level set in Session 2 if you counterbalance, or the same set to test retention on identical levels. The group is recorded in both sessions; assistance is always off in Session 2.</p>
+ ${dbNote()}<div class="row" style="margin-top:18px"><button class="btn-p" id="go">Start session</button></div>`;
+ let tm;const look=()=>{clearTimeout(tm);tm=setTimeout(lookup,350)};$("#pid").oninput=look;onCloudReady=()=>{if(setupTab=="run"&&$("#pane")&&!S){runPane()}};if(Cloud.db)lookup();
+ $("#go").onclick=start}
+async function lookup(){const el=$("#who");if(!el||!Cloud.db)return;const pid=$("#pid").value.trim();if(!pid){el.innerHTML="";return}
+ try{const g=await Cloud.db.doc("participants/"+safeId(pid)).get();if(!$("#who"))return;
+  if(!g.exists){el.innerHTML=`<div class="note">New participant. A record will be created when the session starts.</div>`;return}
+  const d=g.data(),ss=Object.values(d.sessions||{}).sort((a,b)=>String(a.started).localeCompare(b.started));
+  const lines=ss.map(s=>`Session ${s.session} · Set ${esc(s.set)} · ${s.finished?"finished "+new Date(s.finished).toLocaleDateString():"not finished"}`).join("<br>");
+  el.innerHTML=`<div class="note warn"><b>${esc(d.pid)}</b> is in the <b>${esc(GROUPS[d.group]||d.group)}</b> group.<br>${lines}</div>`;
+  if(GROUPS[d.group])$("#grp").value=d.group;if(ss.some(s=>s.session==1&&s.finished))$("#ses").value="2"}catch(e){}}
+function start(){const ses=+$("#ses").value,grp=$("#grp").value,set=$("#set").value,pid=$("#pid").value.trim()||"P00";
+ S={pid,session:ses,group:grp,cond:ses==2?"none":grp,set,skipAfter:Math.max(30,+$("#skip").value||300),i:0,res:[],log:[],quiz:[],t0:now(),started:new Date().toISOString(),
+  key:`rdm2_${safeId(pid)}_s${ses}_${set}_${new Date().toISOString().replace(/[:.]/g,"-")}`,plan:levelPlan(ses,set),farIntroDone:false,cloudTo:0};
+ log("session_start",{pid,session:ses,group:grp,assistance:S.cond,set,ua:navigator.userAgent});registerParticipant(S);cloudFlush();intro()}
+function dataPane(){const p=$("#pane"),loc=localKeys();
+ p.innerHTML=`${dbNote()}
+ <div class="row" style="margin-top:16px;justify-content:space-between"><h3 style="font-size:18px">Sessions in the database</h3>
+ <div class="row"><button id="xs">Sessions CSV</button><button id="xl">All levels CSV</button><button id="xq">All quiz CSV</button></div></div>
+ <div id="dbt" class="tbl"><table><tr><td class="mu">${Cloud.db?"Loading sessions…":"No database connection."}</td></tr></table></div>
+ <h3 style="font-size:18px;margin-top:26px">Saved in this browser</h3><p class="mu" style="font-size:14px;margin:4px 0 0">A backup copy of every session run on this computer. Upload one if it never reached the database.</p>
+ <div class="tbl">${loc.length?`<table><tr><th>Session</th><th></th></tr>${loc.map(k=>`<tr><td>${esc(k.slice(5))}</td><td style="text-align:right"><button data-up="${esc(k)}" ${Cloud.db?"":"disabled"}>Upload</button> <button data-dl="${esc(k)}">JSON</button></td></tr>`).join("")}</table>`:`<table><tr><td class="mu">Nothing saved locally.</td></tr></table>`}</div>
+ ${loc.length?`<div class="row" style="margin-top:12px"><button class="btn-ghost" id="clr">Delete local copies</button></div>`:""}`;
+ p.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>exportFile(b.dataset.dl.slice(5)+".json",localStorage.getItem(b.dataset.dl)));
+ p.querySelectorAll("[data-up]").forEach(b=>b.onclick=async()=>{const o=JSON.parse(localStorage.getItem(b.dataset.up));b.disabled=true;b.textContent="Uploading…";
+  const s={...o,key:o.key||b.dataset.up,cond:o.assistance,res:o.levels||[],quiz:o.quiz||[],log:o.events||[],plan:levelPlan(o.session,o.set),i:(o.levels||[]).length,cloudTo:0,skipAfter:null};
+  const ok=await cloudFlush(s);await registerParticipant(s);b.textContent=ok?"Uploaded":"Failed, retry";b.disabled=ok});
+ if($("#clr"))$("#clr").onclick=async()=>{if(await ask("Delete local copies?","This removes the backups stored in this browser. Sessions already in the database stay there.","Delete")){loc.forEach(k=>localStorage.removeItem(k));dataPane()}};
+ $("#xs").onclick=()=>exp("sessions");$("#xl").onclick=()=>exp("levels");$("#xq").onclick=()=>exp("quiz");
+ onCloudReady=()=>{if(setupTab=="data"&&$("#pane"))dataPane()};
+ if(Cloud.db&&!sessUnsub){const t=setTimeout(()=>{if(!sessRows){sessErr="The database isn't answering yet.";drawSess()}},10000);
+  sessUnsub=Cloud.db.collection("sessions").onSnapshot(sn=>{clearTimeout(t);sessErr="";sessRows=sn.docs.map(d=>d.data()).sort((a,b)=>String(b.started).localeCompare(String(a.started)));drawSess()},e=>{clearTimeout(t);sessErr="Couldn't read sessions ("+(e&&e.code)+").";drawSess()})}
+ drawSess()}
+function drawSess(){const el=$("#dbt");if(!el)return;if(sessErr&&!sessRows){el.innerHTML=`<table><tr><td class="mu">${esc(sessErr)}</td></tr></table>`;return}if(!sessRows)return;
+ if(!sessRows.length){el.innerHTML=`<table><tr><td class="mu">No sessions yet. They appear here as soon as one starts.</td></tr></table>`;return}
+ el.innerHTML=`<table><tr><th>Participant</th><th>Session</th><th>Group</th><th>Set</th><th>Started</th><th>Status</th><th>Solved</th><th>Quiz</th><th></th></tr>${sessRows.map(s=>{const lv=(s.levels||[]).filter(l=>l.kind!="practice");
+  return`<tr><td><b>${esc(s.pid)}</b></td><td>${esc(s.session)}</td><td>${esc(GROUPS[s.group]||s.group)}</td><td>${esc(s.set)}</td><td>${esc(new Date(s.started).toLocaleString())}</td>
+  <td><span class="pill ${s.status=="complete"?"ok":"run"}">${s.status=="complete"?"Complete":"In progress"}</span></td><td>${lv.filter(l=>l.solved).length} / ${lv.length}</td><td>${(s.quiz||[]).length?s.quizScore+" / "+s.quiz.length:"–"}</td>
+  <td><button data-js="${esc(s.key)}">Full log</button></td></tr>`}).join("")}</table>`;
+ el.querySelectorAll("[data-js]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent="Fetching…";try{const k=b.dataset.js,sd=(await Cloud.db.doc("sessions/"+k).get()).data();
+  const ch=(await Cloud.db.collection(`sessions/${k}/events`).get()).docs.map(d=>d.data()).sort((a,b)=>a.chunk-b.chunk);
+  const events=ch.flatMap(c=>c.events||[]);const out={...sd,events};
+  await exportFile(k.slice(5)+".json",JSON.stringify(out,null,1));b.textContent="Full log"}catch(e){b.textContent="Failed"}b.disabled=false})}
+function exp(kind){const rows=sessRows||[];const meta=s=>({pid:s.pid,session:s.session,group:s.group,assistance:s.assistance,set:s.set,key:s.key});
+ let out;if(kind=="sessions")out=rows.map(s=>({...meta(s),started:s.started,finished:s.finished,status:s.status,levels:(s.levels||[]).length,solved:(s.levels||[]).filter(l=>l.solved).length,quizScore:s.quizScore,quizN:(s.quiz||[]).length,events:s.eventCount}));
+ else if(kind=="levels")out=rows.flatMap(s=>(s.levels||[]).map(l=>({...meta(s),...l})));else out=rows.flatMap(s=>(s.quiz||[]).map(q=>({...meta(s),...q})));
+ if(!out.length){toast("Nothing to export yet");return}exportFile(`rdm_${kind}_${new Date().toISOString().slice(0,10)}.csv`,toCSV(out))}
+
+/* ======================= TEXT SCREENS ======================= */
+const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the board)";
+function ruleText(rule){return`Roll the die one square at a time. A <b style="color:var(--lock)">numbered</b> square can only be entered if the die's <b>${faceName(rule)}</b> shows that number after the roll. Reach the <b style="color:var(--exit)">⚑</b> exit.`}
+function intro(){const s1=S.session==1;
+ app.innerHTML=bar(S.cond=="adaptive"?`<span class="chip ai">Assistant on</span>`:"")+`<main class="screen"><div class="sheet wide"><div class="introGrid"><div class="showcase" id="sc"></div><div>
+ <div class="eyebrow">${s1?"Session 1":"Session 2"}</div><h1 class="bigtitle">Roll it.<br>Read it.<br>Get out.</h1>
+ <p>${ruleText("top")}</p>
+ <p>Some squares have special markings. Nobody will tell you what they do. You'll have to find out.</p>
+ <div class="keys"><span><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to roll</span><span><kbd>Z</kbd> to undo</span><span>Swipe on touch screens</span></div>
+ <p class="mu">Try to finish each level in as few moves as you can. ${s1?`You'll start with a short practice level, then play ${S.plan.length-1} levels.`:`You'll play ${S.plan.length} levels. No help is available in this session.`}${s1&&S.cond=="user"?" If you get stuck, you can press Help.":""}${s1&&S.cond=="adaptive"?" An assistant is watching and may offer a hint when it thinks one would help.":""}</p>
+ <button class="btn-p" id="b">Begin</button></div></div></div></main>`;
+ showcase($("#sc"));$("#b").onclick=startLevel;$("#b").focus()}
+function farIntro(){S.farIntroDone=true;log("rule_change_shown");
+ app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">Rule change</div><h1 style="font-size:34px;margin:6px 0 12px">Now check the bottom</h1>
+ <p>For the next levels, numbered squares check the <b>bottom face</b>: the one touching the board, which you can't see. Everything else is unchanged.</p>
+ <div class="row" style="margin-top:14px"><button class="btn-p" id="b">Continue</button></div></div></main>`;$("#b").onclick=startLevel;$("#b").focus()}
+
+/* ======================= LEVEL PLAY ======================= */
+const skey=(r,c,o)=>r+","+c+","+o.join("");
+function startLevel(){const def=S.plan[S.i];if(def.rule=="bottom"&&!S.farIntroDone)return farIntro();
+ L=loadLevel(def);
+ G={r:L.start[0],c:L.start[1],o:O0.slice(),hist:[],moves:0,undos:0,blocked:0,t:now(),lastAct:now(),done:false,skipped:false,
+  tier:0,hints:0,autoHints:0,lastHintAt:0,actsSinceHint:99,hint:"",hlCell:null,hlDir:null,msg:"",msgInfo:false,
+  visits:new Map(),blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0,tilesSeen:new Set()};
+ G.best=dist();G.visits.set(skey(G.r,G.c,G.o),1);
+ log("level_start",{opt:L.opt,rule:L.rule,n:L.n});buildGame();
+ clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
+function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
+function act(d){if(!G||G.done||DLG)return;const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
+ if(!m.ok){G.blocked++;const bk=skey(G.r,G.c,G.o)+d,rep=G.blockSeen.has(bk);G.blockSeen.add(bk);
+  G.msg=m.why=="wall"?"Blocked: wall or edge.":`Blocked: the ${L.rule} face would show ${m.face}, not ${m.need}.`;
+  if(V.ok)aBump(d,G.r,G.c,G.o,m.why=="num"?m.nr+","+m.nc:null);
+  struggle(rep?"repeat_block":"probe",rep?1.5:0.3);log("blocked",{d,why:m.why,repeat:rep,score:+G.score.toFixed(2)});return afterAct()}
+ const r0=G.r,c0=G.c,o0=G.o;G.hist.push([G.r,G.c,G.o]);G.r=m.r;G.c=m.c;G.o=m.o;G.moves++;G.msg="";
+ if(V.ok){const mid=roll(o0,d);aRoll(d,r0,c0,o0,m.r,m.c,mid);if(m.tile)aTile(m.tile,m.r,m.c,mid,m.o)}
+ if(m.tile){const first=!G.tilesSeen.has(m.tile)&&!S.log.some(e=>e.type=="tile"&&e.tile==m.tile);G.tilesSeen.add(m.tile);
+  if(first){G.msg="Something happened to the die on that square.";G.msgInfo=true}log("tile",{tile:m.tile,first})}
+ log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move")}
+function undo(){if(!G||G.done||!G.hist.length||DLG)return;[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
+function evalState(kind){const d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
+ let type,w;
+ if(d==Infinity){type="deadend";w=1.5}
+ else if(d<G.best){G.best=d;type="progress";w=-3}
+ else if(v==0){type="explore";w=0.3}
+ else{type="loop";w=1}
+ if(kind=="undo"&&type!="progress")w+=0.4;
+ struggle(type,w);log("state",{dist:d==Infinity?null:d,cls:type,revisit:v>0,score:+G.score.toFixed(2)});
+ if(G.r==L.exit[0]&&G.c==L.exit[1])return finish(false);afterAct()}
+function struggle(type,w){G.score=Math.max(0,G.score+w);G.maxScore=Math.max(G.maxScore,G.score);G.recent.push(type);if(G.recent.length>8)G.recent.shift()}
+function idleTick(){if(!G||G.done||Q)return;const idle=(now()-G.lastAct)/1000;
+ if(idle>=CFG.idleSecs){struggle("idle",0.5);log("idle",{secs:Math.round(idle),score:+G.score.toFixed(2)});checkDetector()}
+ if(!G.skipShown&&(now()-G.t)/1000>=S.skipAfter){G.skipShown=true;drawPanel()}}
+function afterAct(){checkDetector();drawPanel()}
+function checkDetector(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
+ if(G.done||G.score<CFG.threshold||secs<CFG.levelGraceSecs||G.actsSinceHint<CFG.autoMinGapActions&&G.lastHintAt||gap<CFG.autoMinGapSecs)return;
+ G.fires++;log("detector_fire",{score:+G.score.toFixed(2),recent:G.recent.join(" "),will_hint:S.cond=="adaptive"});
+ if(S.cond=="adaptive")giveHint(true);else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}}
+function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forEach(t=>c[t]=(c[t]||0)+1);
+ for(const t of["repeat_block","loop","idle"])if((c[t]||0)>=2)return t;return"general"}
+function giveHint(auto){G.tier=Math.min(G.tier+1,3);G.hints++;if(auto)G.autoHints++;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;
+ const p=bfs(L,G.r,G.c,G.o),type=dominant();G.hlCell=null;G.hlDir=null;let label,t;
+ if(!p){label="Hint";t="From here the exit can't be reached. Undo a few moves and try another way."}
+ else if(G.tier==1){label="Nudge";
+  t=type=="loop"?"You've had the die in this exact position before. Sometimes the way forward is a small detour, rolling around a loop just to turn the die so the right face ends up where you need it."
+   :type=="repeat_block"?`Before you roll, try to predict which number will end up on the ${faceName(L.rule)}. Watch the side faces: they tell you what's coming.`
+   :"Look at the numbered squares you'll have to cross. Which face will each one need, and how could you get the die to arrive that way?"}
+ else if(G.tier==2){label="Concept";let r=G.r,c=G.c,o=G.o;
+  for(const d of p){const m=tryMove(L,r,c,o,d);const cell=L.g[m.r][m.c];
+   if(cell.tile){G.hlCell=[m.r,m.c];t=cell.tile=="spin"?"Squares marked ↻ give the die a quarter turn clockwise (seen from above). The top stays the same, but every side face moves round by one. A good route uses the highlighted one.":"Squares marked ⇅ turn the die upside down. Top and bottom swap, and so do front and back. A good route uses the highlighted one.";break}
+   if(cell.num){G.hlCell=[m.r,m.c];t=`Rolling tips the die over the edge in that direction: the top face goes down that side, and the face on the far side comes up. On a good route, the next number you cross is the highlighted square, so the ${faceName(L.rule)} must show ${cell.num} when you arrive.${L.rule=="bottom"?" Opposite faces always add up to 7, so the bottom is 7 minus the top.":""}`;break}
+   r=m.r;c=m.c;o=m.o}
+  t=t||"Rolling tips the die over the edge in that direction: the top face goes down that side, and the face on the far side comes up. The rest of the best route has no number locks."}
+ else{label="Next move";G.hlDir=p[0];G.hlCell=[G.r+D[p[0]][0],G.c+D[p[0]][1]];t=`Roll ${DIRNAME[p[0]]} ${ARROW[p[0]]}, onto the highlighted square.`}
+ G.hint={auto,label,t,tier:G.tier};log("hint",{auto,tier:G.tier,label,cause:type,dist:p?p.length:null});drawPanel()}
+function finish(skipped){G.done=true;G.skipped=skipped;clearInterval(idleTimer);
+ const e={level:S.i+1,kind:L.kind,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
+  undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,maxTier:G.tier,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
+  uniqueStates:G.visits.size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);cloudFlush();
+ G.hlCell=null;G.hlDir=null;setHighlight(null);if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
+ drawPanel();setTimeout(drawDone,skipped?0:650)}
+function next(){S.i++;G=null;if(S.i<S.plan.length)startLevel();else quizStart()}
+
+/* ---------- game screen ---------- */
+function buildGame(){const isPrac=L.kind=="practice";
+ app.innerHTML=bar(`<span class="chip">Numbers check the&nbsp;<b style="color:var(--ink)">${L.rule} face</b></span>${S.cond=="adaptive"?`<span class="chip ai">Assistant on</span>`:""}`)+
+ `<main class="game"><section class="stage" id="stage" aria-label="Game board">
+  <div class="legend"><span><i class="sw" style="background:var(--lock)">4</i>Number lock</span><span><i class="sw" style="background:var(--spin)">↻</i>?</span><span><i class="sw" style="background:var(--flip)">⇅</i>?</span><span><i class="sw" style="background:var(--exit);color:#0b3324">⚑</i>Exit</span></div>
+ </section><aside class="panel" id="panel"></aside></main>`;
+ const st=$("#stage");mount(st);if(V.ok){buildBoard(L);placeDie(G.r,G.c,G.o)}
+ let sx=null,sy=null;st.onpointerdown=e=>{sx=e.clientX;sy=e.clientY};st.onpointerup=e=>{if(sx==null)return;const dx=e.clientX-sx,dy=e.clientY-sy;sx=null;if(Math.max(Math.abs(dx),Math.abs(dy))<28)return;act(Math.abs(dx)>Math.abs(dy)?(dx>0?"E":"W"):(dy>0?"S":"N"))};
+ drawPanel()}
+function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const o=G.o,dn=G.done,isPrac=L.kind=="practice";
+ const numbered=S.plan.filter(x=>x.kind!="practice"),idx=numbered.indexOf(S.plan[S.i])+1;
+ const track=numbered.map((def,i)=>{const r=S.res.find(x=>x.level==S.plan.indexOf(def)+1);return`<i class="${r?(r.skipped?"skip":"done"):i+1==idx?"now":""}"></i>`}).join("");
+ pn.innerHTML=`<div class="lvhead"><div><div class="lbl">${isPrac?"Practice":"Level"}</div><div class="lvnum">${isPrac?"P":idx}<small>${isPrac?"":" / "+numbered.length}</small></div></div>
+  <div class="moves"><span>Moves</span><b>${G.moves}</b></div></div>
+ <div class="track" aria-hidden="true">${track}</div>
+ <div class="rule"><span class="sw">#</span><div>Numbered squares check the <b>${L.rule=="top"?"top face":"bottom face"}</b>${L.rule=="bottom"?" (touching the board)":""}.</div></div>
+ <div class="faces" aria-label="Die faces"><div class="face top">${faceSVG(o[0])}<span class="lbl">Top</span></div><div class="face">${faceSVG(7-o[1])}<span class="lbl">Front</span></div><div class="face">${faceSVG(o[2])}<span class="lbl">Right</span></div></div>
+ <div class="pad"><button class="n" data-d="N" aria-label="Roll up">▲</button><button class="w" data-d="W" aria-label="Roll left">◀</button><button class="s" data-d="S" aria-label="Roll down">▼</button><button class="e" data-d="E" aria-label="Roll right">▶</button></div>
+ <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button>${S.cond=="user"&&!dn?`<button id="hp" class="help">Help${G.tier?`<span class="tier">${[1,2,3].map(i=>`<i class="${i<=G.tier?"on":""}"></i>`).join("")}</span>`:""}</button>`:""}${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
+ <div class="msg ${G.msgInfo?"info":""}" role="status">${G.msg}</div>
+ ${G.hint&&!dn?`<div class="hint" role="status"><div class="h"><span>${G.hint.auto?"Assistant":"Help"} · ${G.hint.label}</span><span class="tier">${[1,2,3].map(i=>`<i class="${i<=G.hint.tier?"on":""}"></i>`).join("")}</span></div>${G.hint.t}</div>`:""}`;
+ setHighlight(dn?null:G.hlCell,G.hlDir);
+ pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
+ $("#un").onclick=undo;if($("#hp"))$("#hp").onclick=()=>{log("help_click");giveHint(false)};
+ if($("#sk"))$("#sk").onclick=async()=>{if(await ask("Skip this level?","It will be recorded as unsolved.","Skip level"))finish(true)}}
+function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$(".done"))return;const isPrac=L.kind=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
+ const el=document.createElement("div");el.className="done";
+ el.innerHTML=`<div class="donecard">${G.skipped?`<h2 style="font-size:26px">Level skipped</h2><p class="mu">On to the next one.</p>`:`<div class="eyebrow">${isPrac?"Practice complete":"Solved"}</div>
+ <div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/><circle cx="60" cy="60" r="52" fill="none" stroke="${eff>=1?"#7ef0b8":"#ffb547"}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C*eff} ${C}"/></svg><div><span>${G.moves}<small>moves</small></span></div></div>
+ <p style="margin:0">Best possible: <b>${L.opt}</b></p>${isPrac?`<p class="mu" style="margin:6px 0 0">That's the practice done. The real levels start now.</p>`:""}`}
+ <button class="btn-p" id="nx" style="margin-top:16px;min-width:180px">${S.i+1<S.plan.length?"Next level":"Continue"}</button></div>`;
+ st.appendChild(el);$("#nx").onclick=next;$("#nx").focus()}
+document.addEventListener("keydown",e=>{if(DLG||!G||!L||Q||!$("#stage"))return;
+ if(G.done){if(e.key=="Enter"&&$("#nx")){e.preventDefault();$("#nx").click()}return}
+ if(e.target&&e.target.tagName=="BUTTON"&&(e.key=="Enter"||e.key==" "))return;
+ const d=KEY[e.key];if(d){e.preventDefault();act(d)}else if(e.key=="z"||e.key=="Z"||e.key=="Backspace"){e.preventDefault();undo()}});
+
+/* ======================= QUIZ ======================= */
+function quizStart(){const R=rng((S.set=="B"?97:13)+S.session*1000);const pick=a=>a[Math.floor(R()*a.length)];
+ const randO=()=>{let o=O0.slice();for(let k=0;k<25;k++){const r=R();o=r<.8?roll(o,pick("NSEW")):tileFx(o,"spin")}return o};
+ const qs=[];
+ for(let i=0;i<3;i++){const o=randO(),ds=[...Array(2+i)].map(()=>pick("NSEW"));let c=o;ds.forEach(d=>c=roll(c,d));qs.push({type:"top",o,ds,ask:"top",a:c[0]})}
+ {const o=randO(),ds=[pick("NSEW"),pick("NSEW")];let c=o;ds.forEach(d=>c=roll(c,d));qs.push({type:"bottom",o,ds,ask:"bottom",a:7-c[0]})}
+ {const o=randO(),d=pick("NSEW");const c=tileFx(roll(o,d),"spin");qs.push({type:"spin",o,ds:[d],tile:"spin",ask:"right",a:c[2]})}
+ {const o=randO(),d=pick("NSEW");const c=tileFx(roll(o,d),"flip");qs.push({type:"flip",o,ds:[d],tile:"flip",ask:"top",a:c[0]})}
+ Q={i:0,qs};S.i=-1;L=null;V.host=null;log("quiz_start");qNext()}
+function qNext(){if(Q.i>=Q.qs.length)return end();const q=Q.qs[Q.i];
+ const askTxt=q.ask=="top"?"on <b>top</b>":q.ask=="bottom"?"on the <b>bottom</b> (touching the board)":"facing <b>right</b>";
+ const seq=q.ds.map(d=>DIRNAME[d]+" "+ARROW[d]).join(", then ");
+ app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">Quick check</div><h1 style="font-size:28px;margin:4px 0 10px">Question ${Q.i+1} of ${Q.qs.length}</h1>
+ <div class="qprog">${Q.qs.map((_,i)=>`<i class="${i<=Q.i?"on":""}"></i>`).join("")}</div>
+ <p class="mu" style="margin-top:0">Work it out in your head.</p>
+ <div class="row" style="gap:20px;align-items:center"><div class="qdie">${dieSVG(q.o)}</div>
+ <p style="flex:1;min-width:220px;margin:0">The die shows <b>${q.o[0]}</b> on top, <b>${7-q.o[1]}</b> on the front and <b>${q.o[2]}</b> on the right.<br>It rolls <b>${seq}</b>${q.tile?`, landing on a <b style="color:var(--${q.tile})">${q.tile=="spin"?"↻":"⇅"}</b> square`:""}.<br>What number is now ${askTxt}?</p></div>
+ <div class="nums">${[1,2,3,4,5,6].map(n=>`<button data-n="${n}">${n}</button>`).join("")}</div><p class="mu" style="margin-top:14px;font-size:14px">"Up" means away from you, toward the back of the board.</p></div></main>`;
+ const shown=now();app.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{const ok=+b.dataset.n==q.a;S.quiz.push({q:Q.i+1,type:q.type,answer:+b.dataset.n,correct:q.a,ok,secs:+((now()-shown)/1000).toFixed(1)});log("quiz",{q:Q.i+1,qtype:q.type,ans:+b.dataset.n,ok});Q.i++;qNext()})}
+
+/* ======================= END + EXPORT ======================= */
+function toCSV(rows){if(!rows.length)return"";const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+ return[cols.join(",")].concat(rows.map(r=>cols.map(c=>{const v=r[c];const s=v==null?"":typeof v=="object"?JSON.stringify(v):String(v);return'"'+s.replace(/"/g,'""')+'"'}).join(","))).join("\n")}
+async function end(){S.finished=new Date().toISOString();log("session_end");Q=null;const s=S;
+ const base=`${s.pid}_session${s.session}_${s.group}_set${s.set}`,meta={pid:s.pid,session:s.session,group:s.group,assistance:s.cond,set:s.set};
+ const off=s.plan[0].kind=="practice"?1:0;
+ const rows=s.res.map(r=>`<tr><td>${r.kind=="practice"?"Practice":r.level-off}</td><td>${r.kind}${r.rule=="bottom"?" (bottom)":""}</td><td>${r.skipped?"skipped":r.moves+" / "+r.opt}</td><td>${r.hints}</td><td>${r.secs}s</td></tr>`).join("");
+ app.innerHTML=bar()+`<main class="screen"><div class="sheet wide"><div class="eyebrow">Session complete</div><h1 class="bigtitle" style="font-size:44px">All done. Thank you!</h1>
+ <p>You've finished this session. Please let the experimenter know.</p>
+ <details style="margin-top:22px"><summary class="mu" style="cursor:pointer">Experimenter: results and exports</summary>
+ <div id="sync" class="note">Saving to the database…</div>
+ <div class="tbl"><table><tr><th>Level</th><th>Type</th><th>Moves / best</th><th>Hints</th><th>Time</th></tr>${rows}</table></div>
+ <p>Rule check: <b>${s.quiz.filter(q=>q.ok).length} / ${s.quiz.length}</b> correct.</p>
+ <div class="row"><button class="btn-p" id="j">Full log (JSON)</button><button id="c1">Levels CSV</button><button id="c2">Events CSV</button><button id="c3">Quiz CSV</button><button id="nw" class="btn-ghost">New session</button></div></details></div></main>`;
+ $("#j").onclick=()=>exportFile(base+".json",JSON.stringify(exportObj(s),null,1));
+ $("#c1").onclick=()=>exportFile(base+"_levels.csv",toCSV(s.res.map(r=>({...meta,...r}))));
+ $("#c2").onclick=()=>exportFile(base+"_events.csv",toCSV(s.log.map(r=>({...meta,...r}))));
+ $("#c3").onclick=()=>exportFile(base+"_quiz.csv",toCSV(s.quiz.map(r=>({...meta,...r}))));
+ $("#nw").onclick=()=>{setupTab="run";setup()};
+ let ok=false;if(Cloud.db){s.cloudTo=0;ok=await cloudFlush(s);await registerParticipant(s)}
+ const el=$("#sync");if(el){el.className="note "+(ok?"ok":"bad");el.textContent=ok?"Saved to the database.":Cloud.db?"Couldn't reach the database. The session is kept in this browser; upload it later from Collected data.":"No database here. The session is kept in this browser; download it below."}}
+
+window.__rdm={CFG,get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,V,Cloud};
+cloudInit();setup();
+</script></body></html>
