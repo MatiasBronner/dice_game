@@ -8,15 +8,18 @@ A 3D puzzle game for a study on AI assistance and skill acquisition. Players rol
 
 Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the links)
 
-| Link | Path | Condition | Session |
-|---|---|---|---|
-| 1 | `/play/1/` | **Development**: for the research team, not participants | any |
-| 2 | `/play/2/` | Control: no help | 1 |
-| 3 | `/play/3/` | Adaptive: hints when the struggle detector fires | 1 |
-| 4 | `/play/4/` | Help always available (lightbulb) | 1 |
-| 5 | `/play/5/` | Delayed test: no help for anyone | 2 |
+| Link | Path | Condition |
+|---|---|---|
+| 1 | `/play/1/` | **Development**: for the research team, not participants |
+| 2 | `/play/2/` | Control: no help |
+| 3 | `/play/3/` | Adaptive: hints when the struggle detector fires |
+| 4 | `/play/4/` | Help always available (lightbulb) |
 
-The paths are numbered, not named, so participants can't tell which condition they're in. Add `?pid=ID` (or Prolific's `PROLIFIC_PID`) to fill in the participant ID automatically. Participants must use the same ID in both sessions; the delayed test is linked to their group through `pid`.
+The paths are numbered, not named, so participants can't tell which condition they're in.
+
+### Sign-in and repeat testing
+
+Participants sign in with their **first and last name**. Their participant ID (`pid`) is the name normalised to lowercase with accents and spacing ignored, so "Matías  Bronner" and "matias bronner" are both `matias-bronner`. Each time someone plays, a new row is added to `sessions` with the same `pid`, so repeated testing builds a history per person, and `participants` keeps their name and group. Two different people with the same full name would share a `pid`. If that's possible in your sample, ask one of them to add a middle initial.
 
 ### Development link (1)
 
@@ -30,15 +33,14 @@ If a participant reloads or closes the tab, they're offered **Continue where I l
 
 ## Session structure
 
-**Session 1** (links 2–4): practice → **30 training levels** (assistance per condition) → **6 immediate-test levels** on their own → 6-question rule quiz.
-**Session 2** (link 5): **6 delayed-test levels** → the same quiz.
+Every session (links 2–4): practice → **30 training levels** (assistance per condition) → **6 test levels** on their own → 6-question rule quiz.
 
 | Levels | Tier | Board | Optimal moves | Notes |
 |---|---|---|---|---|
 | T01–T10 | easy | 5×5 | 4–7 | ↻ first appears at T08 |
 | T11–T20 | medium | 6×6 | 9–13 | ⇅ first appears at T13 |
 | T21–T30 | hard | 6×6 / 7×7 | 13–20 | Both tiles from T25 |
-| I1–I6 / D1–D6 | retention ×2, near ×2, far ×2 | 6×6 / 7×7 | 10–17 | Immediate and delayed sets are matched pairs: same specs, optimal and lock-cost within 1 |
+| I1–I6 | retention ×2, near ×2, far ×2 | 6×6 / 7×7 | 10–17 | Played on their own after training |
 
 *Far transfer* levels switch to the bottom-face rule, with a rule-change screen first.
 
@@ -53,36 +55,40 @@ See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle 
 | File | What it is |
 |---|---|
 | `index.html` | Experimenter page with the four links |
-| `play/1..5/index.html` | Study pages; each sets the condition and loads the shared files |
+| `play/1..4/index.html` | Study pages; each sets the condition and loads the shared files |
 | `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
 | `levels.js` | Generated levels |
 | `supabase/schema.sql` | Full database setup for a new project |
-| `supabase/migration_v3.sql` | Upgrade for a project set up with the earlier schema |
+| `supabase/migration.sql` | Upgrade for an existing project (cumulative; safe to rerun) |
 
 ## Supabase
 
 1. Create a project at https://supabase.com.
-2. In **SQL Editor**, run `supabase/schema.sql` (new project) or `supabase/migration_v3.sql` (upgrading).
+2. In **SQL Editor**, run `supabase/schema.sql` (new project) or `supabase/migration.sql` (existing project).
 3. Put the Project URL and publishable key in `SUPABASE_URL` / `SUPABASE_ANON_KEY` at the top of `app.js`.
 
 The publishable key is designed to be public. All tables have row-level security turned on with no policies, so the page can only write through `rdm_save_session` / `rdm_save_events`, and nobody can read data through the API. View and export data in the dashboard (**Table Editor → Export to CSV**), or from analysis scripts using the secret key, which you should never commit.
 
 | Table | One row per |
 |---|---|
-| `participants` | participant (ID, group) |
-| `sessions` | session (`mode` = link, group, assistance, start/finish, status, quiz score, device) |
+| `participants` | person (`pid`, `first_name`, `last_name`, group) |
+| `sessions` | time someone played (`pid`, name, `mode` = link, group, assistance, start/finish, status, quiz score, device) |
 | `level_results` | level played (`level_id`, `phase`, `tier`, moves, optimal, efficiency, undos, blocks, hints, `hint_ms`, detector fires, time) |
 | `quiz_answers` | quiz question |
 | `events` | logged action: moves, blocks, undos, tiles, hints and how long they were watched, detector fires, idle, quiz. The full event is in `data` (jsonb) |
 
-Example: performance on the immediate and delayed tests by condition.
+Example: performance on the test levels by condition, and each person's sessions in order.
 
 ```sql
-select p.grp, l.phase, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
+select p.grp, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
        avg(l.solved::int) solved, count(*)
 from level_results l join sessions s using (session_key) join participants p on p.pid = s.pid
-where l.phase in ('immediate', 'delayed') and s.mode <> 'dev'
-group by 1, 2, 3 order by 1, 2, 3;
+where l.phase = 'immediate' and s.mode <> 'dev'
+group by 1, 2 order by 1, 2;
+
+select pid, first_name, last_name, mode, started_at, status, quiz_score,
+       row_number() over (partition by pid order by started_at) as visit
+from sessions where mode <> 'dev' order by pid, started_at;
 ```
 
-To delete test data: `delete from sessions where pid like 'TEST%'; delete from participants where pid like 'TEST%';`
+To delete one person's data: `delete from sessions where pid = 'first-last'; delete from participants where pid = 'first-last';`

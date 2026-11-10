@@ -9,7 +9,9 @@
 -- or with the service-role key from your own analysis scripts.
 
 create table if not exists participants (
-  pid          text primary key,
+  pid          text primary key,         -- normalised "first-last" name, e.g. matias-bronner
+  first_name   text,
+  last_name    text,
   grp          text not null,            -- none | user | adaptive (group at first session)
   first_seen   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
@@ -18,8 +20,10 @@ create table if not exists participants (
 create table if not exists sessions (
   session_key   text primary key,
   pid           text not null references participants(pid),
+  first_name    text,
+  last_name     text,
   session       int  not null,           -- 1 = training, 2 = delayed test
-  mode          text,                    -- study URL: dev | control | adaptive | help | delayed
+  mode          text,                    -- study URL: dev | control | adaptive | help
   grp           text not null,           -- none | user | adaptive | delayed (delayed-test link) | dev
   assistance    text not null,           -- assistance actually given this session
   level_set     text not null,           -- A | B
@@ -95,6 +99,9 @@ alter table level_results enable row level security;
 alter table quiz_answers  enable row level security;
 alter table events        enable row level security;
 
+-- A participant is identified by their normalised name (pid). Each time they play, a new
+-- row is added to sessions, so repeat testing builds up a history per participant.
+
 -- Save or update a session with its level results and quiz answers.
 create or replace function rdm_save_session(s jsonb) returns void
 language plpgsql security definer set search_path = public as $$
@@ -102,16 +109,19 @@ declare k text := s->>'key';
 begin
   if k is null or length(k) > 120 then raise exception 'bad key'; end if;
 
-  insert into participants(pid, grp, first_seen)
-  values (s->>'pid', s->>'group', coalesce((s->>'started')::timestamptz, now()))
+  insert into participants(pid, first_name, last_name, grp, first_seen)
+  values (s->>'pid', s->>'firstName', s->>'lastName', s->>'group', coalesce((s->>'started')::timestamptz, now()))
   on conflict (pid) do update set
-    -- a participant's group is set by their first training session; dev and delayed-test sessions never overwrite it
+    -- keep the name as first entered; each session row keeps what was typed that time
+    first_name = coalesce(participants.first_name, excluded.first_name),
+    last_name  = coalesce(participants.last_name, excluded.last_name),
+    -- a participant's group is set by their first non-dev session; dev sessions never overwrite it
     grp = case when participants.grp in ('delayed','test','dev') and excluded.grp not in ('delayed','test','dev') then excluded.grp else participants.grp end,
     updated_at = now();
 
-  insert into sessions(session_key, pid, session, mode, grp, assistance, level_set, started_at, finished_at,
+  insert into sessions(session_key, pid, first_name, last_name, session, mode, grp, assistance, level_set, started_at, finished_at,
     status, current_level, levels_total, quiz_score, quiz_n, event_count, skip_after, user_agent, screen, timezone, updated_at)
-  values (k, s->>'pid', (s->>'session')::int, s->>'mode', s->>'group', s->>'assistance', coalesce(s->>'set','v3'),
+  values (k, s->>'pid', s->>'firstName', s->>'lastName', (s->>'session')::int, s->>'mode', s->>'group', s->>'assistance', coalesce(s->>'set','v3'),
     (s->>'started')::timestamptz, (s->>'finished')::timestamptz, s->>'status',
     (s->>'currentLevel')::int, (s->>'levelsTotal')::int, (s->>'quizScore')::int,
     jsonb_array_length(coalesce(s->'quiz','[]'::jsonb)), (s->>'eventCount')::int,

@@ -5,19 +5,18 @@
 <title>Rolling Die Maze · Study links</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=3.1">
+<link rel="stylesheet" href="app.css?v=3.2">
 </head><body><div id="app">
 <header class="bar"><div class="mark"><svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="6" fill="#f8f3e8"/><circle cx="8" cy="8" r="2.2" fill="#1b2140"/><circle cx="13" cy="13" r="2.2" fill="#ffb547"/><circle cx="18" cy="18" r="2.2" fill="#1b2140"/></svg>Rolling Die Maze</div><div class="barR"><span class="chip">Experimenter</span></div></header>
 <main class="screen"><div class="sheet wide">
-<div class="eyebrow">Study links</div><h1 style="font-size:32px;margin-top:4px">Send each participant one link</h1><p class="mu" style="margin-bottom:0">Links 2–4 are the training conditions, link 5 is the delayed test, and link 1 is for testing the game yourself.</p>
-<p class="mu">The link decides the condition. Paths are numbered so participants can't tell which group they're in. Add <code>?pid=ID</code> to fill in the participant ID automatically (Prolific's <code>PROLIFIC_PID</code> also works).</p>
+<div class="eyebrow">Study links</div><h1 style="font-size:32px;margin-top:4px">Send each participant one link</h1><p class="mu" style="margin-bottom:0">Links 2–4 are the study conditions. Link 1 is for testing the game yourself.</p>
+<p class="mu">The link decides the condition. Paths are numbered so participants can't tell which group they're in. Participants sign in with their first and last name, so everyone they play is linked to the same person, however many times you test them.</p>
 <div class="links" id="links"></div>
-<div class="note"><b>Session 1</b> (links 2–4): practice, 30 training levels (10 easy, 10 medium, 10 hard) with that group's assistance, then 6 levels on their own (immediate test) and a 6-question rule quiz.<br>
-<b>Session 2</b> (link 5): 6 new levels with no help for anyone (delayed test, matched in difficulty to the immediate test), then the quiz. Participants must use the same ID in both sessions.</div>
-<div class="note">Data goes to Supabase: <code>sessions</code>, <code>level_results</code>, <code>quiz_answers</code>, <code>events</code>, <code>participants</code>. Use the Table Editor to view and export it. If a participant reloads the page, they can pick up at the level they were on.</div>
+<div class="note"><b>Each session</b> (links 2–4): practice, 30 training levels (10 easy, 10 medium, 10 hard) with that group's assistance, then 6 levels on their own and a 6-question rule quiz. To test someone again, send them the same link; their new session is linked to their earlier ones by name.</div>
+<div class="note">Data goes to Supabase: <code>participants</code> (one row per person, with their name), <code>sessions</code>, <code>level_results</code>, <code>quiz_answers</code>, <code>events</code>. Use the Table Editor to view and export it. If a participant reloads the page, they can pick up at the level they were on.</div>
 </div></main></div>
 <script>
-const L=[["1","dev","Development","For you: any condition, any level, live detector panel, editable settings. Saved as mode 'dev'"],["2","control","Control","Session 1 · no help"],["3","adaptive","Adaptive help","Session 1 · hints when the struggle detector fires"],["4","help","Help always available","Session 1 · lightbulb hint any time"],["5","delayed","Delayed test","Session 2 · no help for anyone"]];
+const L=[["1","dev","Development","For you: any condition, any level, live detector panel, editable settings. Saved as mode 'dev'"],["2","control","Control","No help"],["3","adaptive","Adaptive help","Hints when the struggle detector fires"],["4","help","Help always available","Lightbulb hint any time"]];
 const base=location.href.replace(/[^/]*$/,"");
 document.getElementById("links").innerHTML=L.map(([n,m,t,d])=>{const u=base+"play/"+n+"/";return`<div class="link"><div class="k">${n}</div><div><b>${t}</b> <span class="mu">· ${d}</span><br><code>${u}</code></div><div class="row"><a href="${u}" target="_blank" rel="noopener">Open</a><button data-u="${u}">Copy</button></div></div>`}).join("");
 document.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.u);b.textContent="Copied"}catch(e){b.textContent="Copy failed"}setTimeout(()=>b.textContent="Copy",1500)});

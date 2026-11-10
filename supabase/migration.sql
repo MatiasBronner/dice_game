@@ -1,11 +1,16 @@
--- Rolling Die Maze v3 migration. Run ONCE in Supabase: SQL Editor → New query → paste → Run.
--- Safe to run more than once. Existing data is kept.
+-- Rolling Die Maze: upgrade an existing Supabase project to the current version.
+-- Run in Supabase: SQL Editor → New query → paste → Run. Safe to run any number of times;
+-- existing data is kept. (Replaces migration_v3.sql.)
 
-alter table sessions      add column if not exists mode     text;
-alter table level_results add column if not exists level_id text;
-alter table level_results add column if not exists phase    text;
-alter table level_results add column if not exists tier     text;
-alter table level_results add column if not exists hint_ms  int;
+alter table participants  add column if not exists first_name text;
+alter table participants  add column if not exists last_name  text;
+alter table sessions      add column if not exists first_name text;
+alter table sessions      add column if not exists last_name  text;
+alter table sessions      add column if not exists mode       text;
+alter table level_results add column if not exists level_id   text;
+alter table level_results add column if not exists phase      text;
+alter table level_results add column if not exists tier       text;
+alter table level_results add column if not exists hint_ms    int;
 
 -- Save or update a session with its level results and quiz answers.
 create or replace function rdm_save_session(s jsonb) returns void
@@ -14,16 +19,19 @@ declare k text := s->>'key';
 begin
   if k is null or length(k) > 120 then raise exception 'bad key'; end if;
 
-  insert into participants(pid, grp, first_seen)
-  values (s->>'pid', s->>'group', coalesce((s->>'started')::timestamptz, now()))
+  insert into participants(pid, first_name, last_name, grp, first_seen)
+  values (s->>'pid', s->>'firstName', s->>'lastName', s->>'group', coalesce((s->>'started')::timestamptz, now()))
   on conflict (pid) do update set
-    -- a participant's group is set by their first training session; dev and delayed-test sessions never overwrite it
+    -- keep the name as first entered; each session row keeps what was typed that time
+    first_name = coalesce(participants.first_name, excluded.first_name),
+    last_name  = coalesce(participants.last_name, excluded.last_name),
+    -- a participant's group is set by their first non-dev session; dev sessions never overwrite it
     grp = case when participants.grp in ('delayed','test','dev') and excluded.grp not in ('delayed','test','dev') then excluded.grp else participants.grp end,
     updated_at = now();
 
-  insert into sessions(session_key, pid, session, mode, grp, assistance, level_set, started_at, finished_at,
+  insert into sessions(session_key, pid, first_name, last_name, session, mode, grp, assistance, level_set, started_at, finished_at,
     status, current_level, levels_total, quiz_score, quiz_n, event_count, skip_after, user_agent, screen, timezone, updated_at)
-  values (k, s->>'pid', (s->>'session')::int, s->>'mode', s->>'group', s->>'assistance', coalesce(s->>'set','v3'),
+  values (k, s->>'pid', s->>'firstName', s->>'lastName', (s->>'session')::int, s->>'mode', s->>'group', s->>'assistance', coalesce(s->>'set','v3'),
     (s->>'started')::timestamptz, (s->>'finished')::timestamptz, s->>'status',
     (s->>'currentLevel')::int, (s->>'levelsTotal')::int, (s->>'quizScore')::int,
     jsonb_array_length(coalesce(s->'quiz','[]'::jsonb)), (s->>'eventCount')::int,

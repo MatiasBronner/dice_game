@@ -1,5 +1,5 @@
 /* Rolling Die Maze v3 — shared game script. Each study URL (play/1..4/index.html) sets
-   window.RDM = {mode: "dev" | "control" | "adaptive" | "help" | "delayed"} and loads levels.js + this file. *
+   window.RDM = {mode: "dev" | "control" | "adaptive" | "help"} and loads levels.js + this file. */
 
 /* ======================= CONFIG ======================= */
 // Supabase: project URL and publishable/anon key (public by design; tables are write-only, see supabase/schema.sql).
@@ -8,7 +8,6 @@ const SUPABASE_ANON_KEY="sb_publishable_rWa5xKlL8iRVmuFsF6Uavg_n3aLq4w_";
 
 const MODES={
  dev:     {session:1,group:"dev",     cond:"none",    label:"Development"},
- delayed: {session:2,group:"delayed", cond:"none",    label:"Follow-up session"},
  control: {session:1,group:"none",    cond:"none",    label:"Training session"},
  adaptive:{session:1,group:"adaptive",cond:"adaptive",label:"Training session"},
  help:    {session:1,group:"user",    cond:"user",    label:"Training session"}};
@@ -207,10 +206,10 @@ function setStatus(s){SB.status=s;const el=$("#cloud");if(el){el.dataset.s=s;el.
 const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${SB.on?SB.status:"off"}"><i></i>${STL[SB.on?SB.status:"off"]}</span>`;
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 const ACTIVE="rdm3_active_"+MODE;
-function exportObj(s=S){return{key:s.key,pid:s.pid,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,started:s.started,finished:s.finished||null,t0:s.t0,i:s.i,seen:s.seen,
+function exportObj(s=S){return{key:s.key,pid:s.pid,first:s.first,last:s.last,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,started:s.started,finished:s.finished||null,t0:s.t0,i:s.i,seen:s.seen,
  sbTo:s.sbTo||0,screen:s.screen,tz:s.tz,levels:s.res,quiz:s.quiz,events:s.log}}
 function save(){if(S)LS.set("rdm3_"+S.key,JSON.stringify(exportObj()))}
-function sessionDoc(s){return{key:s.key,pid:s.pid,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:"v3",started:s.started,finished:s.finished||null,
+function sessionDoc(s){return{key:s.key,pid:s.pid,firstName:s.first||null,lastName:s.last||null,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:"v3",started:s.started,finished:s.finished||null,
  status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.filter(q=>q.ok).length,
  eventCount:s.log.length,skipAfter:CFG.skipAfterSecs,ua:navigator.userAgent,screen:s.screen,timezone:s.tz}}
 async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:txt.length<60000,
@@ -231,29 +230,35 @@ let S=null,L=null,G=null,Q=null,idleTimer=null,DLG=false;
 const now=()=>Date.now();
 function log(type,d={}){if(!S)return;S.log.push({t:now()-S.t0,at:new Date().toISOString(),lv:S.i,levelId:L?L.id:null,kind:L?L.tier:null,...d,type});save();touch()}
 const safeId=s=>String(s).replace(/[^A-Za-z0-9_-]/g,"-").slice(0,60)||"P00";
+const cleanName=s=>String(s||"").replace(/\s+/g," ").trim().slice(0,60);
+// participant id = normalised "first-last" (accents and case ignored), so the same person links across sessions
+const nameId=(f,l)=>(cleanName(f)+" "+cleanName(l)).normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"anon";
 const assist=()=>!!L&&S.cond!="none"&&L.phase=="training";
 function bar(right=""){return`<header class="bar"><div class="mark">${MARK}Rolling Die Maze</div><div class="barR">${right}${cloudChip()}</div></header>`}
 function ask(title,body,ok="Confirm"){return new Promise(res=>{const d=document.createElement("div");d.className="dlg";d.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><h3>${title}</h3><p class="mu">${body}</p><div class="row" style="margin-top:16px"><button class="btn-p" data-y>${ok}</button><button data-n>Cancel</button></div></div>`;
  document.body.appendChild(d);DLG=true;const done=v=>{d.remove();DLG=false;res(v)};d.querySelector("[data-y]").onclick=()=>done(true);d.querySelector("[data-n]").onclick=()=>done(false);d.querySelector("[data-n]").focus()})}
-function urlPid(){const q=new URLSearchParams(location.search);return q.get("pid")||q.get("PROLIFIC_PID")||q.get("id")||""}
+
 function resumable(){const k=LS.get(ACTIVE);if(!k)return null;try{const o=JSON.parse(LS.get("rdm3_"+k));if(!o||o.finished||now()-o.t0>12*3600e3)return null;return o}catch(e){return null}}
 
-function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=null;const r=resumable(),pid=urlPid();
- app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">${M.label}</div><h1 style="font-size:34px;margin:6px 0 10px">Welcome</h1>
- ${r?`<div class="note warn">You were partway through (level ${Math.min(r.i+1,planFor(M).length)} of ${planFor(M).length}) as <b>${esc(r.pid)}</b>.<div class="row" style="margin-top:10px"><button class="btn-p" id="res">Continue where I left off</button></div></div>`:""}
- <form id="f"><label for="pid">Your participant ID</label><input id="pid" value="${esc(pid)}" autocomplete="off" placeholder="The ID you were given" required>
- <div class="err" id="er"></div><p class="mu" style="font-size:14px">Use the same ID every time you take part.</p>
- <div class="row" style="margin-top:8px"><button class="btn-p" type="submit">${r?"Start over":"Continue"}</button></div></form></div></main>`;
+function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=null;const r=resumable();
+ app.innerHTML=bar()+`<main class="screen"><div class="sheet" style="max-width:520px"><div class="eyebrow">${M.label}</div><h1 style="font-size:34px;margin:6px 0 6px">Welcome</h1>
+ <p class="mu" style="margin-top:0">Please enter your name to sign in.</p>
+ ${r?`<div class="note warn">You were partway through (level ${Math.min(r.i+1,planFor(M).length)} of ${planFor(M).length}) as <b>${esc(((r.first||"")+" "+(r.last||"")).trim()||r.pid)}</b>.<div class="row" style="margin-top:10px"><button class="btn-p" id="res">Continue where I left off</button></div></div>`:""}
+ <form id="f" novalidate><div class="grid2"><div><label for="fn">First name</label><input id="fn" autocomplete="given-name" required></div>
+ <div><label for="ln">Last name</label><input id="ln" autocomplete="family-name" required></div></div>
+ <div class="err" id="er" role="alert"></div><p class="mu" style="font-size:14px">Use the same name each time you take part, so your sessions are linked.</p>
+ <div class="row" style="margin-top:8px"><button class="btn-p" type="submit">${r?"Start over":"Sign in"}</button></div></form></div></main>`;
  if(r)$("#res").onclick=()=>resume(r);
- $("#f").onsubmit=e=>{e.preventDefault();const v=$("#pid").value.trim();if(!v){$("#er").textContent="Please enter your participant ID.";return}begin(v)};
- if(!r&&!pid)$("#pid").focus()}
-function newS(pid){const st=new Date().toISOString();
- return{pid,mode:MODE,session:M.session,group:M.group,cond:M.cond,i:0,res:[],log:[],quiz:[],t0:now(),started:st,seen:{},sbTo:0,
+ $("#f").onsubmit=e=>{e.preventDefault();const f=cleanName($("#fn").value),l=cleanName($("#ln").value);
+  if(!f||!l){$("#er").textContent=!f&&!l?"Please enter your first and last name.":!f?"Please enter your first name.":"Please enter your last name.";(!f?$("#fn"):$("#ln")).focus();return}begin(f,l)};
+ if(!r)$("#fn").focus()}
+function newS(first,last){const st=new Date().toISOString(),pid=nameId(first,last);
+ return{pid,first,last,mode:MODE,session:M.session,group:M.group,cond:M.cond,i:0,res:[],log:[],quiz:[],t0:now(),started:st,seen:{},sbTo:0,
   key:`rdm3_${safeId(pid)}_${MODE}_${st.replace(/[:.]/g,"-")}`,plan:planFor(M),
   screen:`${screen.width}x${screen.height} @${devicePixelRatio||1}x, window ${innerWidth}x${innerHeight}`,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||"")}}
-function begin(pid){S=newS(pid);LS.set(ACTIVE,S.key);
- log("session_start",{pid,mode:MODE,session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
-function resume(o){S={pid:o.pid,mode:MODE,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
+function begin(first,last){S=newS(first,last);LS.set(ACTIVE,S.key);const pid=S.pid;
+ log("session_start",{pid,firstName:first,lastName:last,mode:MODE,session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
+function resume(o){S={pid:o.pid,first:o.first,last:o.last,mode:MODE,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
  sbTo:o.sbTo||0,key:o.key,plan:planFor(M),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
  if(S.i>=S.plan.length)quizStart();else startLevel()}
 
@@ -437,7 +442,7 @@ function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
 const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint automatically",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
 function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=null;G=null;Q=null;V.host=null;const pr=devPrefs();applyCfg(pr.cfg);
- const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"],["delayed","Delayed test"]];
+ const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"]];
  const num=(id,v,step)=>`<input id="${id}" type="number" step="${step}" value="${v}">`;
  app.innerHTML=bar(`<span class="chip">Development</span>`)+`<main class="screen"><div class="sheet wide">
  <div class="eyebrow">Development link</div><h1 style="font-size:32px;margin-top:4px">Test the game and settings</h1>
@@ -445,7 +450,7 @@ function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=nu
  <div class="grid2"><div>
   <label for="dc">Condition</label><select id="dc">${conds.map(([k,t])=>`<option value="${k}" ${pr.cond==k?"selected":""}>${t}</option>`).join("")}</select>
   <label for="dl">Start at</label><select id="dl"></select>
-  <label for="dp">Participant ID</label><input id="dp" value="${esc(pr.pid||"DEV")}">
+  <div class="grid2" style="gap:0 12px"><div><label for="dfn">First name</label><input id="dfn" value="${esc(pr.first||"Dev")}"></div><div><label for="dln">Last name</label><input id="dln" value="${esc(pr.last||"Tester")}"></div></div>
  </div><div>
   <label class="tog"><input type="checkbox" id="dh" ${pr.hud!==false?"checked":""}> Show detector panel on the board</label>
   <label class="tog"><input type="checkbox" id="ds" ${pr.save!==false?"checked":""}> Save to Supabase</label>
@@ -457,17 +462,18 @@ function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=nu
  <div class="cfg">${Object.keys(CFG_DEFAULT.W).map(k=>`<div><label for="w_${k}">${k}</label>${num("w_"+k,CFG.W[k],.1)}${CFG.W[k]!==CFG_DEFAULT.W[k]?`<div class="hint2">default ${CFG_DEFAULT.W[k]}</div>`:""}</div>`).join("")}</div>
  <div class="row" style="margin-top:20px"><button class="btn-p" id="go">Start</button><button id="rs">Reset settings to defaults</button><button id="cp">Copy settings as code</button></div>
  <textarea id="code" readonly style="display:none;margin-top:12px"></textarea></div></main>`;
+ if(!MODES[pr.cond]||MODES[pr.cond].session!=1)pr.cond="control";
  const fillLevels=()=>{const m=MODES[$("#dc").value],pl=planFor(m);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${pr.cond==$("#dc").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
  fillLevels();$("#dc").onchange=fillLevels;
  const read=()=>{const c={W:{}};for(const k in CFG_DEFAULT){if(k=="W")continue;const el=$("#c_"+k);c[k]=typeof CFG_DEFAULT[k]=="boolean"?el.value=="true":+el.value}for(const k in CFG_DEFAULT.W)c.W[k]=+$("#w_"+k).value;return c};
- const store=()=>{const c=read();applyCfg(c);const p={cond:$("#dc").value,start:+$("#dl").value,pid:$("#dp").value.trim()||"DEV",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
+ const store=()=>{const c=read();applyCfg(c);const p={cond:$("#dc").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
  $("#rs").onclick=()=>{const p=devPrefs();delete p.cfg;LS.set(DEVK,JSON.stringify(p));for(const k in CFG_DEFAULT)CFG[k]=k=="W"?{...CFG_DEFAULT.W}:CFG_DEFAULT[k];devSetup()};
  $("#cp").onclick=async()=>{store();const t="const CFG="+JSON.stringify(CFG,null,1).replace(/\n\s*/g," ")+";";const ta=$("#code");ta.style.display="block";ta.value=t;ta.select();try{await navigator.clipboard.writeText(t);$("#cp").textContent="Copied"}catch(e){$("#cp").textContent="Select and copy below"}};
  $("#go").onclick=()=>{const p=store();devStart(p)}}
-function devStart(p){M={...MODES[p.cond],label:"Development · "+(MODES[p.cond].cond=="none"?(p.cond=="delayed"?"delayed test":"control"):p.cond)};
- SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.pid);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;
+function devStart(p){M={...MODES[p.cond],label:"Development · "+p.cond};
+ SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;
  if(!p.intro)S.seen={immediate:true,bottom:true};
- log("session_start",{pid:S.pid,mode:"dev",devCondition:p.cond,session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
+ log("session_start",{pid:S.pid,firstName:S.first,lastName:S.last,mode:"dev",devCondition:p.cond,session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
  clearInterval(devTimer);devTimer=setInterval(()=>{if(G&&!G.done)drawHud()},1000);
  if(p.intro&&p.start==0)intro();else startLevel()}
 function devGo(i){if(!S)return;if(G)endHint("dev_jump");i=Math.max(0,Math.min(S.plan.length-1,i));log("dev_jump",{from:S.i,to:i});S.i=i;G=null;startLevel()}

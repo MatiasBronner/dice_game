@@ -49,7 +49,7 @@ A **ghost die** demonstrates the next 3 moves of an optimal solution from the pl
 
 - **Help-always (link 4):** the lightbulb is always available; clicking it starts the ghost.
 - **Adaptive (link 3):** the bulb is dim ("Assistant watching") and lights up when the detector fires. By default the ghost starts automatically (`CFG.adaptiveAutoPlay = true`). Set it to `false` to have the bulb pulse and wait for a click instead.
-- Hints only exist in the 30 training levels. Practice, the immediate test and the delayed test never show them.
+- Hints only exist in the 30 training levels. Practice and the 6 test levels at the end never show them.
 
 ## Tuning
 
