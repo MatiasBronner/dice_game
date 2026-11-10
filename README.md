@@ -4,73 +4,76 @@ A 3D puzzle game for a study on AI assistance and skill acquisition. Players rol
 
 **Research question:** Does adaptive AI intervention that preserves productive struggle lead to better independent learning and long-term skill retention than user-initiated assistance or no assistance?
 
-## Conditions
+## Study links
 
-| Group | Session 1 (training) | Session 2 (delayed test) |
-|---|---|---|
-| `none` | No assistance | No assistance |
-| `user` | Help button, 3 hint tiers (Nudge, Concept, Next move) | No assistance |
-| `adaptive` | Automatic hints when the struggle detector fires | No assistance |
+Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the links)
 
-The struggle detector runs in every group and is logged (`detector_fire`). Only the adaptive group sees hints, so you can compare when it *would* have fired in the other groups.
+| Link | Path | Condition | Session |
+|---|---|---|---|
+| 1 | `/play/1/` | Delayed test: no help for anyone | 2 |
+| 2 | `/play/2/` | Control: no help | 1 |
+| 3 | `/play/3/` | Adaptive: hints when the struggle detector fires | 1 |
+| 4 | `/play/4/` | Help always available (lightbulb) | 1 |
 
-Session 2 includes retention levels, near-transfer levels (new layouts with ↻/⇅ squares) and far-transfer levels (numbers check the bottom face). Level sets A and B allow counterbalancing.
+The paths are numbered, not named, so participants can't tell which condition they're in. Add `?pid=ID` (or Prolific's `PROLIFIC_PID`) to fill in the participant ID automatically. Participants must use the same ID in both sessions; the delayed test is linked to their group through `pid`.
 
-## Running it
+If a participant reloads or closes the tab, they're offered **Continue where I left off** (within 12 hours, same browser). The level they were on restarts, and everything they did before is kept.
 
-`index.html` is a single self-contained page (Three.js r128 loaded from cdnjs).
+## Session structure
 
-- **GitHub Pages (with Supabase):** https://matiasbronner.github.io/dice_game/. Sessions save to your Supabase project once it's configured (see below).
-- **Claude artifact:** the claude.ai version saves to its own built-in database when opened while signed in. It can't reach Supabase, because claude.ai pages block outside connections.
-- **Locally:** open `index.html` in a browser.
+**Session 1** (links 2–4): practice → **30 training levels** (assistance per condition) → **6 immediate-test levels** on their own → 6-question rule quiz.
+**Session 2** (link 1): **6 delayed-test levels** → the same quiz.
 
-Every session is also kept in the browser's localStorage as a backup and can be exported from the end screen or the *Collected data* tab.
+| Levels | Tier | Board | Optimal moves | Notes |
+|---|---|---|---|---|
+| T01–T10 | easy | 5×5 | 4–7 | ↻ first appears at T08 |
+| T11–T20 | medium | 6×6 | 9–13 | ⇅ first appears at T13 |
+| T21–T30 | hard | 6×6 / 7×7 | 13–20 | Both tiles from T25 |
+| I1–I6 / D1–D6 | retention ×2, near ×2, far ×2 | 6×6 / 7×7 | 10–17 | Immediate and delayed sets are matched pairs: same specs, optimal and lock-cost within 1 |
 
-## Supabase setup
+*Far transfer* levels switch to the bottom-face rule, with a rule-change screen first.
+
+Levels are generated and verified by `tools/gen_levels.py`, which writes `levels.js`. Every level is solved exactly, and every ↻/⇅ square is necessary (removing it makes the level longer or unsolvable). See the script for the difficulty targets. To change the levels, edit the plan in the script and run `python3 tools/gen_levels.py`.
+
+## Hints and the struggle detector
+
+See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next 3 optimal moves and loops until the player gives any input.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `index.html` | Experimenter page with the four links |
+| `play/1..4/index.html` | Study pages; each sets the condition and loads the shared files |
+| `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
+| `levels.js` | Generated levels |
+| `supabase/schema.sql` | Full database setup for a new project |
+| `supabase/migration_v3.sql` | Upgrade for a project set up with the earlier schema |
+
+## Supabase
 
 1. Create a project at https://supabase.com.
-2. In **SQL Editor → New query**, paste `supabase/schema.sql` and click **Run**.
-3. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
-4. Paste them into `SUPABASE_URL` and `SUPABASE_ANON_KEY` at the top of the script in `index.html`, then commit.
+2. In **SQL Editor**, run `supabase/schema.sql` (new project) or `supabase/migration_v3.sql` (upgrading).
+3. Put the Project URL and publishable key in `SUPABASE_URL` / `SUPABASE_ANON_KEY` at the top of `app.js`.
 
-The anon key is designed to be public. All tables have row-level security turned on with no policies, so the page can only write through the `rdm_save_session` and `rdm_save_events` functions. Nobody can read data through the API. You view and export data in the Supabase dashboard (**Table Editor → Export to CSV**), or from analysis scripts using the service-role key, which you should never commit.
-
-### Supabase tables
+The publishable key is designed to be public. All tables have row-level security turned on with no policies, so the page can only write through `rdm_save_session` / `rdm_save_events`, and nobody can read data through the API. View and export data in the dashboard (**Table Editor → Export to CSV**), or from analysis scripts using the secret key, which you should never commit.
 
 | Table | One row per |
 |---|---|
 | `participants` | participant (ID, group) |
-| `sessions` | session (group, assistance, level set, start/finish, status, quiz score, device info) |
-| `level_results` | level played (moves, optimal, efficiency, undos, blocks, hints, detector fires, time) |
+| `sessions` | session (`mode` = link, group, assistance, start/finish, status, quiz score, device) |
+| `level_results` | level played (`level_id`, `phase`, `tier`, moves, optimal, efficiency, undos, blocks, hints, `hint_ms`, detector fires, time) |
 | `quiz_answers` | quiz question |
-| `events` | logged action: every move, block, undo, tile, hint, idle, detector fire, quiz answer. The full event is in `data` (jsonb) |
+| `events` | logged action: moves, blocks, undos, tiles, hints and how long they were watched, detector fires, idle, quiz. The full event is in `data` (jsonb) |
 
-Example query (efficiency on Session 2 transfer levels by group):
+Example: performance on the immediate and delayed tests by condition.
 
 ```sql
-select s.grp, l.kind, avg(l.efficiency) as eff, avg(l.secs) as secs, count(*)
-from level_results l join sessions s using (session_key)
-where s.session = 2 group by 1, 2 order by 1, 2;
+select p.grp, l.phase, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
+       avg(l.solved::int) solved, count(*)
+from level_results l join sessions s using (session_key) join participants p on p.pid = s.pid
+where l.phase in ('immediate', 'delayed')
+group by 1, 2, 3 order by 1, 2, 3;
 ```
 
-## Claude artifact database
-
-When the claude.ai version's database is available:
-
-- `sessions/{key}`: metadata, per-level results, quiz answers, status
-- `sessions/{key}/events/c0000…`: full event log in chunks of 250 events
-- `participants/{pid}`: assigned group and session history
-
-Exports: per-session JSON and CSVs for levels, events, quiz answers, and a summary of all sessions.
-
-### Detector settings (`CFG` in `index.html`)
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `threshold` | 6 | Struggle score that triggers the detector |
-| `levelGraceSecs` | 25 | No firing in the first N seconds of a level |
-| `autoMinGapSecs` | 20 | Minimum seconds between hints |
-| `autoMinGapActions` | 6 | Minimum actions between hints |
-| `idleSecs` | 25 | Idle time that counts as struggle |
-
-Score weights: progress −3, dead end +1.5, repeated block +1.5, loop +1, idle +0.5, new state +0.3, first block +0.3, undo without progress +0.4.
+To delete test data: `delete from sessions where pid like 'TEST%'; delete from participants where pid like 'TEST%';`

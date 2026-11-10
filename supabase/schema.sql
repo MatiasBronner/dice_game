@@ -19,7 +19,8 @@ create table if not exists sessions (
   session_key   text primary key,
   pid           text not null references participants(pid),
   session       int  not null,           -- 1 = training, 2 = delayed test
-  grp           text not null,           -- participant's group
+  mode          text,                    -- study URL: test | control | adaptive | help
+  grp           text not null,           -- none | user | adaptive | test (delayed-test link)
   assistance    text not null,           -- assistance actually given this session
   level_set     text not null,           -- A | B
   started_at    timestamptz not null,
@@ -39,8 +40,11 @@ create table if not exists sessions (
 
 create table if not exists level_results (
   session_key     text not null references sessions(session_key) on delete cascade,
-  level           int  not null,
-  kind            text,                  -- practice | train | retention | near | far
+  level           int  not null,           -- position in the session (1 = first level played)
+  level_id        text,                  -- P0, T01-T30, I1-I6, D1-D6 (see levels.js)
+  phase           text,                  -- practice | training | immediate | delayed
+  tier            text,                  -- easy | medium | hard | retention | near | far
+  kind            text,                  -- same as tier (kept for compatibility)
   rule            text,                  -- top | bottom
   solved          boolean,
   skipped         boolean,
@@ -51,7 +55,8 @@ create table if not exists level_results (
   blocked         int,
   hints           int,
   auto_hints      int,
-  max_tier        int,
+  hint_ms         int,                   -- total ms hints were on screen
+  max_tier        int,                   -- unused since v3
   detector_fires  int,
   max_struggle    numeric,
   unique_states   int,
@@ -99,11 +104,13 @@ begin
 
   insert into participants(pid, grp, first_seen)
   values (s->>'pid', s->>'group', coalesce((s->>'started')::timestamptz, now()))
-  on conflict (pid) do update set updated_at = now();
+  on conflict (pid) do update set
+    grp = case when participants.grp = 'test' and excluded.grp <> 'test' then excluded.grp else participants.grp end,
+    updated_at = now();
 
-  insert into sessions(session_key, pid, session, grp, assistance, level_set, started_at, finished_at,
+  insert into sessions(session_key, pid, session, mode, grp, assistance, level_set, started_at, finished_at,
     status, current_level, levels_total, quiz_score, quiz_n, event_count, skip_after, user_agent, screen, timezone, updated_at)
-  values (k, s->>'pid', (s->>'session')::int, s->>'group', s->>'assistance', s->>'set',
+  values (k, s->>'pid', (s->>'session')::int, s->>'mode', s->>'group', s->>'assistance', coalesce(s->>'set','v3'),
     (s->>'started')::timestamptz, (s->>'finished')::timestamptz, s->>'status',
     (s->>'currentLevel')::int, (s->>'levelsTotal')::int, (s->>'quizScore')::int,
     jsonb_array_length(coalesce(s->'quiz','[]'::jsonb)), (s->>'eventCount')::int,
@@ -113,15 +120,16 @@ begin
     quiz_score = excluded.quiz_score, quiz_n = excluded.quiz_n, event_count = excluded.event_count,
     updated_at = now();
 
-  insert into level_results
-  select k, (l->>'level')::int, l->>'kind', l->>'rule', (l->>'solved')::boolean, (l->>'skipped')::boolean,
+  insert into level_results(session_key, level, level_id, phase, tier, kind, rule, solved, skipped, moves, opt, efficiency,
+    undos, blocked, hints, auto_hints, hint_ms, max_tier, detector_fires, max_struggle, unique_states, secs)
+  select k, (l->>'level')::int, l->>'id', l->>'phase', l->>'tier', l->>'kind', l->>'rule', (l->>'solved')::boolean, (l->>'skipped')::boolean,
     (l->>'moves')::int, (l->>'opt')::int, (l->>'efficiency')::numeric, (l->>'undos')::int, (l->>'blocked')::int,
-    (l->>'hints')::int, (l->>'autoHints')::int, (l->>'maxTier')::int, (l->>'detectorFires')::int,
+    (l->>'hints')::int, (l->>'autoHints')::int, (l->>'hintMs')::int, (l->>'maxTier')::int, (l->>'detectorFires')::int,
     (l->>'maxStruggle')::numeric, (l->>'uniqueStates')::int, (l->>'secs')::int
   from jsonb_array_elements(coalesce(s->'levels','[]'::jsonb)) l
   on conflict (session_key, level) do nothing;
 
-  insert into quiz_answers
+  insert into quiz_answers(session_key, q, qtype, answer, correct, ok, secs)
   select k, (a->>'q')::int, a->>'type', (a->>'answer')::int, (a->>'correct')::int, (a->>'ok')::boolean, (a->>'secs')::numeric
   from jsonb_array_elements(coalesce(s->'quiz','[]'::jsonb)) a
   on conflict (session_key, q) do nothing;
