@@ -17,7 +17,8 @@ begin
   insert into participants(pid, grp, first_seen)
   values (s->>'pid', s->>'group', coalesce((s->>'started')::timestamptz, now()))
   on conflict (pid) do update set
-    grp = case when participants.grp = 'test' and excluded.grp <> 'test' then excluded.grp else participants.grp end,
+    -- a participant's group is set by their first training session; dev and delayed-test sessions never overwrite it
+    grp = case when participants.grp in ('delayed','test','dev') and excluded.grp not in ('delayed','test','dev') then excluded.grp else participants.grp end,
     updated_at = now();
 
   insert into sessions(session_key, pid, session, mode, grp, assistance, level_set, started_at, finished_at,

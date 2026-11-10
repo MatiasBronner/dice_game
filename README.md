@@ -10,19 +10,28 @@ Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the 
 
 | Link | Path | Condition | Session |
 |---|---|---|---|
-| 1 | `/play/1/` | Delayed test: no help for anyone | 2 |
+| 1 | `/play/1/` | **Development**: for the research team, not participants | any |
 | 2 | `/play/2/` | Control: no help | 1 |
 | 3 | `/play/3/` | Adaptive: hints when the struggle detector fires | 1 |
 | 4 | `/play/4/` | Help always available (lightbulb) | 1 |
+| 5 | `/play/5/` | Delayed test: no help for anyone | 2 |
 
 The paths are numbered, not named, so participants can't tell which condition they're in. Add `?pid=ID` (or Prolific's `PROLIFIC_PID`) to fill in the participant ID automatically. Participants must use the same ID in both sessions; the delayed test is linked to their group through `pid`.
+
+### Development link (1)
+
+A setup screen lets you choose any condition, start at any level, turn the intro screens and Supabase saving on or off, and edit every hint and detector setting (`CFG` and the struggle weights). During play, a **detector panel** on the board shows the live struggle score, how each action was classified, moves left versus best, the stagnation budget, and *why* the detector would or wouldn't fire right now. It also has buttons for Hint now, Fire detector, Solve, Restart, Prev/Next level, Quiz and Setup.
+
+Settings edited here are saved in your browser only. **Copy settings as code** produces a `const CFG=…` line to paste into `app.js` when you want them to become the study defaults. Dev sessions are stored with `mode = 'dev'` and `grp = 'dev'`. Exclude them in analysis with `where s.mode <> 'dev'`, or delete them: `delete from sessions where mode = 'dev';`.
+
+### Resuming
 
 If a participant reloads or closes the tab, they're offered **Continue where I left off** (within 12 hours, same browser). The level they were on restarts, and everything they did before is kept.
 
 ## Session structure
 
 **Session 1** (links 2–4): practice → **30 training levels** (assistance per condition) → **6 immediate-test levels** on their own → 6-question rule quiz.
-**Session 2** (link 1): **6 delayed-test levels** → the same quiz.
+**Session 2** (link 5): **6 delayed-test levels** → the same quiz.
 
 | Levels | Tier | Board | Optimal moves | Notes |
 |---|---|---|---|---|
@@ -44,7 +53,7 @@ See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle 
 | File | What it is |
 |---|---|
 | `index.html` | Experimenter page with the four links |
-| `play/1..4/index.html` | Study pages; each sets the condition and loads the shared files |
+| `play/1..5/index.html` | Study pages; each sets the condition and loads the shared files |
 | `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
 | `levels.js` | Generated levels |
 | `supabase/schema.sql` | Full database setup for a new project |
@@ -72,7 +81,7 @@ Example: performance on the immediate and delayed tests by condition.
 select p.grp, l.phase, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
        avg(l.solved::int) solved, count(*)
 from level_results l join sessions s using (session_key) join participants p on p.pid = s.pid
-where l.phase in ('immediate', 'delayed')
+where l.phase in ('immediate', 'delayed') and s.mode <> 'dev'
 group by 1, 2, 3 order by 1, 2, 3;
 ```
 

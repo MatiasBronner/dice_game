@@ -53,6 +53,8 @@ A **ghost die** demonstrates the next 3 moves of an optimal solution from the pl
 
 ## Tuning
 
+The quickest way to tune is the **development link** (`/play/1/`). Edit the weights and thresholds on its setup screen, then play while watching the detector panel. It shows the score, each action's classification, and the reason a fire is or isn't allowed right now. **Fire detector** and **Hint now** let you check the hint without having to struggle first.
+
 All weights and thresholds are in `CFG` at the top of `app.js`. Suggested approach: run a pilot in the **control** condition, then look at `detector_fire` events against later outcomes, for example whether the player solved the level, how many more moves they needed, or whether they skipped. A good threshold fires where players would otherwise stall or skip, and stays quiet where they recover on their own.
 
 Useful queries:
@@ -61,12 +63,12 @@ Useful queries:
 -- How often the detector fires per level, by condition (counterfactual in control/help)
 select s.mode, l.tier, avg(l.detector_fires) fires, avg(l.hints) hints, avg(l.efficiency) eff
 from level_results l join sessions s using (session_key)
-where l.phase = 'training' group by 1, 2 order by 1, 2;
+where l.phase = 'training' and s.mode <> 'dev' group by 1, 2 order by 1, 2;
 
 -- What triggered each fire
 select s.mode, e.data->>'cause' cause, count(*)
 from events e join sessions s using (session_key)
-where e.type = 'detector_fire' group by 1, 2 order by 1, 3 desc;
+where e.type = 'detector_fire' and s.mode <> 'dev' group by 1, 2 order by 1, 3 desc;
 ```
 
 ## Open design questions

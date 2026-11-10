@@ -1,5 +1,5 @@
 /* Rolling Die Maze v3 — shared game script. Each study URL (play/1..4/index.html) sets
-   window.RDM = {mode: "test" | "control" | "adaptive" | "help"} and loads levels.js + this file. */
+   window.RDM = {mode: "dev" | "control" | "adaptive" | "help" | "delayed"} and loads levels.js + this file. *
 
 /* ======================= CONFIG ======================= */
 // Supabase: project URL and publishable/anon key (public by design; tables are write-only, see supabase/schema.sql).
@@ -7,11 +7,13 @@ const SUPABASE_URL="https://wxegmqwqrqdfehisuwkl.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_rWa5xKlL8iRVmuFsF6Uavg_n3aLq4w_";
 
 const MODES={
- test:    {session:2,group:"test",    cond:"none",    label:"Follow-up session"},
+ dev:     {session:1,group:"dev",     cond:"none",    label:"Development"},
+ delayed: {session:2,group:"delayed", cond:"none",    label:"Follow-up session"},
  control: {session:1,group:"none",    cond:"none",    label:"Training session"},
  adaptive:{session:1,group:"adaptive",cond:"adaptive",label:"Training session"},
  help:    {session:1,group:"user",    cond:"user",    label:"Training session"}};
-const MODE=(window.RDM&&MODES[window.RDM.mode])?window.RDM.mode:"control",M=MODES[MODE];
+const MODE=(window.RDM&&MODES[window.RDM.mode])?window.RDM.mode:"control";let M=MODES[MODE];
+const DEV=MODE=="dev";
 
 const CFG={
  hintMoves:3,             // moves the ghost die demonstrates
@@ -26,6 +28,8 @@ const CFG={
  stagnationBase:8,        // actions without a new best distance before "stagnation" starts adding
  stagnationFactor:1.5,    // ...or 1.5 x the remaining optimal distance, whichever is larger
  W:{progress:-3,recovery:-1,discovery:-1,explore:.2,probe:.3,undoNoProgress:.4,stagnation:.5,idle:.5,loop:1,repeatBlock:1.5,deadend:1.5}};
+
+const CFG_DEFAULT=JSON.parse(JSON.stringify(CFG));
 
 /* ======================= GAME LOGIC ======================= */
 const D={N:[-1,0],S:[1,0],E:[0,1],W:[0,-1]};
@@ -234,7 +238,7 @@ function ask(title,body,ok="Confirm"){return new Promise(res=>{const d=document.
 function urlPid(){const q=new URLSearchParams(location.search);return q.get("pid")||q.get("PROLIFIC_PID")||q.get("id")||""}
 function resumable(){const k=LS.get(ACTIVE);if(!k)return null;try{const o=JSON.parse(LS.get("rdm3_"+k));if(!o||o.finished||now()-o.t0>12*3600e3)return null;return o}catch(e){return null}}
 
-function welcome(){S=null;L=null;G=null;Q=null;V.host=null;const r=resumable(),pid=urlPid();
+function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=null;const r=resumable(),pid=urlPid();
  app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">${M.label}</div><h1 style="font-size:34px;margin:6px 0 10px">Welcome</h1>
  ${r?`<div class="note warn">You were partway through (level ${Math.min(r.i+1,planFor(M).length)} of ${planFor(M).length}) as <b>${esc(r.pid)}</b>.<div class="row" style="margin-top:10px"><button class="btn-p" id="res">Continue where I left off</button></div></div>`:""}
  <form id="f"><label for="pid">Your participant ID</label><input id="pid" value="${esc(pid)}" autocomplete="off" placeholder="The ID you were given" required>
@@ -316,9 +320,15 @@ function idleTick(){if(!G||G.done||Q||DLG)return;const idle=(now()-G.lastAct)/10
  if(idle>=CFG.idleSecs&&!G.hint){struggle("idle",CFG.W.idle);log("idle",{secs:Math.round(idle),score:+G.score.toFixed(2)});checkDetector()}
  if(!G.skipShown&&(now()-G.t)/1000>=CFG.skipAfterSecs){G.skipShown=true;drawPanel()}}
 function afterAct(){checkDetector();drawPanel()}
-function checkDetector(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
- if(G.done||G.hint||G.score<CFG.threshold||secs<CFG.levelGraceSecs||G.actsSinceHint<CFG.minGapActions&&G.lastHintAt||gap<CFG.minGapSecs)return;
- const live=assist()&&S.cond=="adaptive";G.fires++;log("detector_fire",{score:+G.score.toFixed(2),recent:G.recent.join(" "),cause:dominant(),will_hint:live});
+function gate(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
+ if(G.done)return"level done";if(G.hint)return"hint showing";
+ if(secs<CFG.levelGraceSecs)return`grace period: ${Math.ceil(CFG.levelGraceSecs-secs)} s left`;
+ if(G.lastHintAt&&G.actsSinceHint<CFG.minGapActions)return`gap: ${CFG.minGapActions-G.actsSinceHint} more actions`;
+ if(gap<CFG.minGapSecs)return`gap: ${Math.ceil(CFG.minGapSecs-gap)} s left`;
+ if(G.score<CFG.threshold)return"below threshold";return""}
+function checkDetector(){if(!gate())fire(false)}
+function fire(forced){
+ const live=assist()&&S.cond=="adaptive";G.fires++;log("detector_fire",{score:+G.score.toFixed(2),recent:G.recent.join(" "),cause:dominant(),will_hint:live,forced:!!forced});
  if(live){if(CFG.adaptiveAutoPlay)giveHint(true);else{G.offer=true;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;log("hint_offer");drawBulb()}}
  else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}}
 function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forEach(t=>c[t]=(c[t]||0)+1);
@@ -351,11 +361,11 @@ function next(){S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else quizS
 /* ---------- game screen ---------- */
 function buildGame(){
  app.innerHTML=bar(`<span class="chip">Numbers check the&nbsp;<b style="color:var(--ink)">${L.rule} face</b></span>`)+
- `<main class="game"><section class="stage" id="stage" aria-label="Game board"><div class="bulb" id="bulb"></div>
+ `<main class="game"><section class="stage" id="stage" aria-label="Game board"><div class="bulb" id="bulb"></div>${DEV?`<div class="hud" id="hud"></div>`:""}
   <div class="legend"><span><i class="sw" style="background:var(--lock)">4</i>Number lock</span><span><i class="sw" style="background:var(--spin)">↻</i>?</span><span><i class="sw" style="background:var(--flip)">⇅</i>?</span><span><i class="sw" style="background:var(--exit);color:#0b3324">⚑</i>Exit</span></div>
  </section><aside class="panel" id="panel"></aside></main>`;
  const st=$("#stage");mount(st);if(V.ok){buildBoard(L);placeMesh(V.die,G.r,G.c,G.o)}
- let sx=null,sy=null;st.onpointerdown=e=>{if(e.target.closest(".bulb,.doneOv"))return;if(G&&G.hint)endHint("click");sx=e.clientX;sy=e.clientY};
+ let sx=null,sy=null;st.onpointerdown=e=>{if(e.target.closest(".bulb,.doneOv,.hud"))return;if(G&&G.hint)endHint("click");sx=e.clientX;sy=e.clientY};
  st.onpointerup=e=>{if(sx==null)return;const dx=e.clientX-sx,dy=e.clientY-sy;sx=null;if(Math.max(Math.abs(dx),Math.abs(dy))<28)return;act(Math.abs(dx)>Math.abs(dy)?(dx>0?"E":"W"):(dy>0?"S":"N"))};
  drawPanel();drawBulb()}
 function levelLabel(){const same=S.plan.filter(x=>x.phase==L.phase),idx=same.findIndex(x=>x.id==L.id)+1;
@@ -374,7 +384,7 @@ function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const dn=G.done,ll=l
  <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
  <div class="msg ${G.msgInfo?"info":""}" role="status">${G.msg}</div>`;
  pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
- $("#un").onclick=undo;
+ $("#un").onclick=undo;if(DEV)drawHud();
  if($("#sk"))$("#sk").onclick=async()=>{if(await ask("Skip this level?","It will be recorded as unsolved.","Skip level"))finish(true)}}
 function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$("#doneOv"))return;const isPrac=L.phase=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
  const el=document.createElement("div");el.className="doneOv";el.id="doneOv";el.setAttribute("role","dialog");el.setAttribute("aria-label","Level complete");
@@ -415,11 +425,70 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
  <p>You've finished this session.</p><div id="sync" class="note">Saving your results… please keep this page open.</div></div></main>`;
  let ok=!SB.on;for(let i=0;i<4&&!ok;i++){ok=await sbSync(s);if(!ok)await sleep(2500)}
  const el=$("#sync");
- if(ok){LS.del(ACTIVE);el.className="note ok";el.textContent=SB.on?"Your results are saved. You can close this page.":"Saved in this browser."}
+ if(ok){LS.del(ACTIVE);el.className="note ok";el.textContent=SB.on?"Your results are saved. You can close this page.":"Saved in this browser.";
+  if(DEV)el.insertAdjacentHTML("afterend",`<div class="row" style="margin-top:14px"><button class="btn-p" id="again">Back to dev setup</button></div>`),$("#again").onclick=devSetup}
  else{el.className="note bad";el.innerHTML=`We couldn't reach the server. Please click below to download your results file and send it to the researcher.<div class="row" style="margin-top:10px"><button class="btn-p" id="dl">Download results file</button><button id="rt">Try saving again</button></div>`;
   $("#dl").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(exportObj(s),null,1)],{type:"application/json"}));a.download=s.key+".json";document.body.appendChild(a);a.click();a.remove()};
   $("#rt").onclick=async()=>{$("#rt").disabled=true;if(await sbSync(s)){LS.del(ACTIVE);el.className="note ok";el.textContent="Your results are saved. You can close this page."}else $("#rt").disabled=false}}}
 
+/* ======================= DEVELOPMENT LINK ======================= */
+const DEVK="rdm3_dev_prefs";let devTimer=null;
+function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
+function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
+const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint automatically",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
+function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=null;G=null;Q=null;V.host=null;const pr=devPrefs();applyCfg(pr.cfg);
+ const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"],["delayed","Delayed test"]];
+ const num=(id,v,step)=>`<input id="${id}" type="number" step="${step}" value="${v}">`;
+ app.innerHTML=bar(`<span class="chip">Development</span>`)+`<main class="screen"><div class="sheet wide">
+ <div class="eyebrow">Development link</div><h1 style="font-size:32px;margin-top:4px">Test the game and settings</h1>
+ <p class="mu">Sessions from this link are saved with <code>mode = 'dev'</code> and <code>grp = 'dev'</code>, so filter them out of the study data with <code>where mode &lt;&gt; 'dev'</code>. Settings changed here apply only in this browser. To make them the study defaults, copy them into <code>CFG</code> in app.js.</p>
+ <div class="grid2"><div>
+  <label for="dc">Condition</label><select id="dc">${conds.map(([k,t])=>`<option value="${k}" ${pr.cond==k?"selected":""}>${t}</option>`).join("")}</select>
+  <label for="dl">Start at</label><select id="dl"></select>
+  <label for="dp">Participant ID</label><input id="dp" value="${esc(pr.pid||"DEV")}">
+ </div><div>
+  <label class="tog"><input type="checkbox" id="dh" ${pr.hud!==false?"checked":""}> Show detector panel on the board</label>
+  <label class="tog"><input type="checkbox" id="ds" ${pr.save!==false?"checked":""}> Save to Supabase</label>
+  <label class="tog"><input type="checkbox" id="di" ${pr.intro?"checked":""}> Show intro and rule-change screens</label>
+ </div></div>
+ <h3 style="font-size:18px;margin-top:22px">Hint and detector settings</h3>
+ <div class="cfg">${Object.keys(CFG_DEFAULT).filter(k=>k!="W").map(k=>`<div><label for="c_${k}">${k}</label>${typeof CFG[k]=="boolean"?`<select id="c_${k}"><option value="true" ${CFG[k]?"selected":""}>true</option><option value="false" ${CFG[k]?"":"selected"}>false</option></select>`:num("c_"+k,CFG[k],k=="stagnationFactor"?.1:1)}<div class="hint2">${CFG_HELP[k]||""}${CFG[k]!==CFG_DEFAULT[k]?` · default ${CFG_DEFAULT[k]}`:""}</div></div>`).join("")}</div>
+ <h3 style="font-size:18px;margin-top:18px">Struggle weights <span class="mu" style="font-size:14px;font-weight:400">(see DETECTOR.md)</span></h3>
+ <div class="cfg">${Object.keys(CFG_DEFAULT.W).map(k=>`<div><label for="w_${k}">${k}</label>${num("w_"+k,CFG.W[k],.1)}${CFG.W[k]!==CFG_DEFAULT.W[k]?`<div class="hint2">default ${CFG_DEFAULT.W[k]}</div>`:""}</div>`).join("")}</div>
+ <div class="row" style="margin-top:20px"><button class="btn-p" id="go">Start</button><button id="rs">Reset settings to defaults</button><button id="cp">Copy settings as code</button></div>
+ <textarea id="code" readonly style="display:none;margin-top:12px"></textarea></div></main>`;
+ const fillLevels=()=>{const m=MODES[$("#dc").value],pl=planFor(m);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${pr.cond==$("#dc").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
+ fillLevels();$("#dc").onchange=fillLevels;
+ const read=()=>{const c={W:{}};for(const k in CFG_DEFAULT){if(k=="W")continue;const el=$("#c_"+k);c[k]=typeof CFG_DEFAULT[k]=="boolean"?el.value=="true":+el.value}for(const k in CFG_DEFAULT.W)c.W[k]=+$("#w_"+k).value;return c};
+ const store=()=>{const c=read();applyCfg(c);const p={cond:$("#dc").value,start:+$("#dl").value,pid:$("#dp").value.trim()||"DEV",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
+ $("#rs").onclick=()=>{const p=devPrefs();delete p.cfg;LS.set(DEVK,JSON.stringify(p));for(const k in CFG_DEFAULT)CFG[k]=k=="W"?{...CFG_DEFAULT.W}:CFG_DEFAULT[k];devSetup()};
+ $("#cp").onclick=async()=>{store();const t="const CFG="+JSON.stringify(CFG,null,1).replace(/\n\s*/g," ")+";";const ta=$("#code");ta.style.display="block";ta.value=t;ta.select();try{await navigator.clipboard.writeText(t);$("#cp").textContent="Copied"}catch(e){$("#cp").textContent="Select and copy below"}};
+ $("#go").onclick=()=>{const p=store();devStart(p)}}
+function devStart(p){M={...MODES[p.cond],label:"Development · "+(MODES[p.cond].cond=="none"?(p.cond=="delayed"?"delayed test":"control"):p.cond)};
+ SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.pid);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;
+ if(!p.intro)S.seen={immediate:true,bottom:true};
+ log("session_start",{pid:S.pid,mode:"dev",devCondition:p.cond,session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
+ clearInterval(devTimer);devTimer=setInterval(()=>{if(G&&!G.done)drawHud()},1000);
+ if(p.intro&&p.start==0)intro();else startLevel()}
+function devGo(i){if(!S)return;if(G)endHint("dev_jump");i=Math.max(0,Math.min(S.plan.length-1,i));log("dev_jump",{from:S.i,to:i});S.i=i;G=null;startLevel()}
+function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.style.display="none";return}
+ if(!el.dataset.built){el.dataset.built=1;el.innerHTML=`<button class="hudMin" id="hudMin" aria-label="Collapse detector panel">–</button><div id="hudS"></div><div class="hudb"><button data-h="hint">Hint now</button><button data-h="fire">Fire detector</button><button data-h="solve">Solve</button><button data-h="restart">Restart</button>
+  <button data-h="prev">◀ Prev</button><button data-h="next">Next ▶</button><button data-h="quiz">Quiz</button><button data-h="setup">Setup</button></div>`;
+  $("#hudMin").onclick=e=>{e.stopPropagation();S.hudMin=!S.hudMin;el.classList.toggle("min",S.hudMin);$("#hudMin").textContent=S.hudMin?"+":"–"};if(S.hudMin){el.classList.add("min");$("#hudMin").textContent="+"}
+  el.querySelectorAll("[data-h]").forEach(b=>b.onclick=e=>{e.stopPropagation();if(!G||!S)return;const h=b.dataset.h;
+   if(h=="hint"){if(!G.done)giveHint(false)}else if(h=="fire"){if(!G.done)fire(true)}else if(h=="solve"){if(!G.done){endHint("dev");(bfs(L,G.r,G.c,G.o)||[]).forEach(d=>act(d))}}
+   else if(h=="restart")devGo(S.i);else if(h=="prev")devGo(S.i-1);else if(h=="next")devGo(S.i+1);else if(h=="quiz"){endHint("dev");G=null;quizStart()}
+   else if(h=="setup"){flush();devSetup()}})}
+ const d=G.lastD,budget=Math.max(CFG.stagnationBase,Math.ceil(CFG.stagnationFactor*(d==Infinity||d==null?G.best:d))),g=gate(),pct=Math.min(100,G.score/CFG.threshold*100);
+ const last=G.recent[G.recent.length-1]||"–",live=assist()&&S.cond=="adaptive";
+ $("#hudS").innerHTML=`<div class="hudh"><b>Detector</b><span>${L.id} · ${L.phase}/${L.tier} · best ${L.opt}</span></div>
+ <div class="meter"><i style="width:${pct}%"></i></div>
+ <div class="hudg"><span>Score</span><b>${G.score.toFixed(1)} / ${CFG.threshold}</b><span>Last action</span><b>${last}</b>
+ <span>Moves left (optimal)</span><b>${d==Infinity?"dead end":d} <span class="mu">· best ${G.best}</span></b><span>Since progress</span><b>${G.sinceProgress} / ${budget}</b>
+ <span>Fires · hints</span><b>${G.fires} · ${G.hints}</b><span>Would fire?</span><b>${g?`<span class="mu">no: ${g}</span>`:"yes"}</b>
+ <span>On fire</span><b>${live?(CFG.adaptiveAutoPlay?"show hint":"offer hint"):"log only"}</b></div>
+ <div class="hudr">${G.recent.map(t=>`<i class="${t}">${t.replace("_"," ")}</i>`).join("")}</div>`}
+
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="hidden"&&S)flush()});
-window.__rdm={CFG,MODE,get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
+window.__rdm={CFG,MODE,devGo,get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
 if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`}else welcome();

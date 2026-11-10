@@ -19,8 +19,8 @@ create table if not exists sessions (
   session_key   text primary key,
   pid           text not null references participants(pid),
   session       int  not null,           -- 1 = training, 2 = delayed test
-  mode          text,                    -- study URL: test | control | adaptive | help
-  grp           text not null,           -- none | user | adaptive | test (delayed-test link)
+  mode          text,                    -- study URL: dev | control | adaptive | help | delayed
+  grp           text not null,           -- none | user | adaptive | delayed (delayed-test link) | dev
   assistance    text not null,           -- assistance actually given this session
   level_set     text not null,           -- A | B
   started_at    timestamptz not null,
@@ -105,7 +105,8 @@ begin
   insert into participants(pid, grp, first_seen)
   values (s->>'pid', s->>'group', coalesce((s->>'started')::timestamptz, now()))
   on conflict (pid) do update set
-    grp = case when participants.grp = 'test' and excluded.grp <> 'test' then excluded.grp else participants.grp end,
+    -- a participant's group is set by their first training session; dev and delayed-test sessions never overwrite it
+    grp = case when participants.grp in ('delayed','test','dev') and excluded.grp not in ('delayed','test','dev') then excluded.grp else participants.grp end,
     updated_at = now();
 
   insert into sessions(session_key, pid, session, mode, grp, assistance, level_set, started_at, finished_at,
