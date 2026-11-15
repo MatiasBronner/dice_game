@@ -48,7 +48,7 @@ After a fire, the score resets to 0. Every fire is logged with the score, the la
 A **ghost die** demonstrates the next 3 moves of an optimal solution from the player's current state, including what special tiles do. It loops until the player does anything (a key, a click or a swipe). A caption lists the moves and points out the key moment, such as reaching a number square with the right face up. In a dead end, the hint says to undo instead.
 
 - **Help-always (link 4):** the lightbulb is always available; clicking it starts the ghost.
-- **Adaptive (link 3):** the bulb is dim ("Assistant watching") and lights up when the detector fires. By default the ghost starts automatically (`CFG.adaptiveAutoPlay = true`). Set it to `false` to have the bulb pulse and wait for a click instead.
+- **Adaptive (link 3):** the bulb is dim ("Assistant watching"). When the detector fires, it lights up and pulses ("Hint ready: click when you want it"), and the hint **waits for the player**. They can keep playing and click it whenever they choose, as long as they're still on that level. While a hint is waiting, the detector doesn't fire again. Once used, the bulb goes back to watching until the next fire. To play the hint the moment the detector fires instead, set `CFG.adaptiveAutoPlay = true`.
 - Hints only exist in the 30 training levels. Practice and the 6 test levels at the end never show them.
 
 ## Tuning
@@ -74,5 +74,5 @@ where e.type = 'detector_fire' and s.mode <> 'dev' group by 1, 2 order by 1, 3 d
 ## Open design questions
 
 - **3 moves vs. fewer.** Three moves shows a pattern (how a roll sequence turns the die) without solving the level, but on easy levels 3 moves can be half the solution. You could scale it, for example `min(3, ceil(remaining / 3))`.
-- **Automatic vs. offered.** Auto-play is a cleaner manipulation, because adaptive timing is entirely the system's. Offering the hint keeps the player's agency but mixes system and player initiative.
+- **Offered vs. automatic.** The study offers the hint and lets the player choose when to use it (`adaptiveAutoPlay = false`). That keeps the player's agency, but means the timing is shared between system and player. Logged for analysis: `hint_offer` (when it became available), `help_click.waitedMs` (how long they waited), and on each `level_done` event `hintOffers` and `hintOfferUnused` (offered but never clicked).
 - **Help-always overuse.** Unlimited hints let a player chain them to the exit. All hint use is logged (`hints`, `hint_ms`), so you can measure it; capping hints per level would change the condition.

@@ -12,7 +12,7 @@ Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the 
 |---|---|---|
 | 1 | `/play/1/` | **Development**: for the research team, not participants |
 | 2 | `/play/2/` | Control: no help |
-| 3 | `/play/3/` | Adaptive: hints when the struggle detector fires |
+| 3 | `/play/3/` | Adaptive: the lightbulb lights up when the struggle detector fires; the player clicks it when they want the hint |
 | 4 | `/play/4/` | Help always available (lightbulb) |
 
 The paths are numbered, not named, so participants can't tell which condition they're in.

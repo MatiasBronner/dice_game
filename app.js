@@ -16,7 +16,7 @@ const DEV=MODE=="dev";
 
 const CFG={
  hintMoves:3,             // moves the ghost die demonstrates
- adaptiveAutoPlay:true,   // adaptive: true = hint plays as soon as the detector fires; false = bulb lights up and waits for a click
+ adaptiveAutoPlay:false,  // adaptive: false = bulb lights up when the detector fires and waits until the player clicks it; true = hint plays immediately
  skipAfterSecs:300,       // "Skip level" appears after this long on one level
  // --- struggle detector (see DETECTOR.md) ---
  threshold:6,             // struggle score that fires the detector
@@ -266,7 +266,7 @@ function resume(o){S={pid:o.pid,first:o.first,last:o.last,mode:MODE,session:o.se
 const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the board)";
 function intro(){const s1=M.session==1,nTrain=LV.training.length,nAss=LV.immediate.length;
  const help=S.cond=="user"?`<p>Stuck? Click the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner of the board. A ghost die will show you the next few rolls.</p>`
-  :S.cond=="adaptive"?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up and a ghost die shows you the next few rolls.</p>`:"";
+  :S.cond=="adaptive"?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up. Click it whenever you like and a ghost die will show you the next few rolls.</p>`:"";
  app.innerHTML=bar()+`<main class="screen"><div class="sheet wide"><div class="introGrid"><div class="showcase" id="sc"></div><div>
  <div class="eyebrow">${M.label}</div><h1 class="bigtitle">Roll it.<br>Read it.<br>Get out.</h1>
  <p>Roll the die one square at a time. A <b style="color:var(--lock)">numbered</b> square can only be entered if the die's <b>top face</b> shows that number after the roll. Reach the <b style="color:var(--exit)">⚑</b> exit.</p>
@@ -288,7 +288,7 @@ function startLevel(){const def=S.plan[S.i];
  if(def.rule=="bottom"&&!S.seen.bottom)return interstitial("bottom");
  L=loadLevel(def);save();
  G={r:L.start[0],c:L.start[1],o:O0.slice(),hist:[],moves:0,undos:0,blocked:0,t:now(),lastAct:now(),done:false,skipped:false,
-  hints:0,autoHints:0,hintMs:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
+  hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
   visits:new Map(),blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0};
  G.best=dist();G.lastD=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
  log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,assist:assist()?S.cond:"none"});buildGame();
@@ -326,7 +326,7 @@ function idleTick(){if(!G||G.done||Q||DLG)return;const idle=(now()-G.lastAct)/10
  if(!G.skipShown&&(now()-G.t)/1000>=CFG.skipAfterSecs){G.skipShown=true;drawPanel()}}
 function afterAct(){checkDetector();drawPanel()}
 function gate(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
- if(G.done)return"level done";if(G.hint)return"hint showing";
+ if(G.done)return"level done";if(G.hint)return"hint showing";if(G.offer)return"hint ready, waiting for a click";
  if(secs<CFG.levelGraceSecs)return`grace period: ${Math.ceil(CFG.levelGraceSecs-secs)} s left`;
  if(G.lastHintAt&&G.actsSinceHint<CFG.minGapActions)return`gap: ${CFG.minGapActions-G.actsSinceHint} more actions`;
  if(gap<CFG.minGapSecs)return`gap: ${Math.ceil(CFG.minGapSecs-gap)} s left`;
@@ -334,7 +334,7 @@ function gate(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
 function checkDetector(){if(!gate())fire(false)}
 function fire(forced){
  const live=assist()&&S.cond=="adaptive";G.fires++;log("detector_fire",{score:+G.score.toFixed(2),recent:G.recent.join(" "),cause:dominant(),will_hint:live,forced:!!forced});
- if(live){if(CFG.adaptiveAutoPlay)giveHint(true);else{G.offer=true;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;log("hint_offer");drawBulb()}}
+ if(live){if(CFG.adaptiveAutoPlay)giveHint(true);else{G.offer=true;G.offers++;G.offerAt=now();G.lastHintAt=now();G.actsSinceHint=0;G.score=0;log("hint_offer");drawBulb()}}
  else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}}
 function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forEach(t=>c[t]=(c[t]||0)+1);
  for(const t of["repeat_block","loop","deadend","idle"])if((c[t]||0)>=2)return t;return G.sinceProgress>CFG.stagnationBase?"stagnation":"general"}
@@ -352,12 +352,12 @@ function hintCaption(){const h=G.hint;if(h.deadend)return`<div class="caption"><
  <div class="seq">${h.seq.map(d=>`<span>${ARROW[d]}</span>`).join("")}</div>${note}<div class="dim">Any key or click hides this.</div></div>`}
 function drawBulb(){const el=$("#bulb");if(!el||!G)return;if(!assist()||G.done){el.innerHTML="";el.removeAttribute("data-s");return}
  const ad=S.cond=="adaptive",s=G.hint?"lit":G.offer?"offer":ad?"watch":"ready";el.dataset.s=s;
- const lbl=G.hint?"":ad?(G.offer?"Hint ready":"Assistant watching"):"Hint";
+ const lbl=G.hint?"":ad?(G.offer?"Hint ready: click when you want it":"Assistant watching"):"Hint";
  el.innerHTML=`<button class="bulbBtn" id="bulbBtn" aria-label="${ad?"Assistant hint":"Get a hint"}" ${s=="watch"?"disabled":""}>${BULB}</button>${lbl?`<div class="bulbLbl">${lbl}</div>`:""}${G.hint?hintCaption():""}`;
- const b=$("#bulbBtn");b.onclick=e=>{e.stopPropagation();if(G.hint)return;if(ad){if(G.offer){log("help_click",{offer:true});giveHint(true)}}else{log("help_click");giveHint(false)}}}
+ const b=$("#bulbBtn");b.onclick=e=>{e.stopPropagation();if(G.hint)return;if(ad){if(G.offer){log("help_click",{offer:true,waitedMs:now()-(G.offerAt||now())});giveHint(true)}}else{log("help_click");giveHint(false)}}}
 function finish(skipped){endHint(skipped?"skip":"solved");G.done=true;G.skipped=skipped;clearInterval(idleTimer);
  const e={level:S.i+1,id:L.id,phase:L.phase,tier:L.tier,kind:L.tier,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
-  undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,hintMs:G.hintMs,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
+  undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,hintOffers:G.offers,hintOfferUnused:!!G.offer,hintMs:G.hintMs,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
   uniqueStates:G.visits.size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
  drawPanel();drawBulb();setTimeout(drawDone,skipped?0:450)}
@@ -440,7 +440,7 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
 const DEVK="rdm3_dev_prefs";let devTimer=null;
 function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
-const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint automatically",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
+const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
 function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=null;G=null;Q=null;V.host=null;const pr=devPrefs();applyCfg(pr.cfg);
  const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"]];
  const num=(id,v,step)=>`<input id="${id}" type="number" step="${step}" value="${v}">`;
