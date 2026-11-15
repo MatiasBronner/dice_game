@@ -32,6 +32,8 @@ The detector keeps a struggle score per level (never below 0). Each action adds 
 | `repeat_block` (same blocked move again) | +1.5 | |
 | `deadend` (exit unreachable) | +1.5 | Per action while stuck |
 
+**Restart** doesn't change the struggle score. It does reset progress tracking (best distance, the stagnation count and revisits) to the start square, so a fresh attempt can earn "progress" again and walking back over the opening isn't counted as looping.
+
 ## When a hint fires
 
 All of these must hold:

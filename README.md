@@ -46,6 +46,20 @@ Every session (links 2–4): practice → **30 training levels** (assistance per
 
 Levels are generated and verified by `tools/gen_levels.py`, which writes `levels.js`. Every level is solved exactly, and every ↻/⇅ square is necessary (removing it makes the level longer or unsolvable). See the script for the difficulty targets. To change the levels, edit the plan in the script and run `python3 tools/gen_levels.py`.
 
+### Restart
+
+**⟲ Restart** (next to Undo) is always available while a level is in progress. It puts the die back on the start square and resets the move counter to 0. In the data:
+- `level_results.moves` and `efficiency` describe the **final attempt** (what the player sees).
+- The `level_done` event also records `restarts` and `totalMoves` across all attempts. Each restart is logged as a `restart` event with the moves made before it.
+- Time, undos, blocks and hints keep counting across restarts.
+
+```sql
+select s.pid, s.mode, e.data->>'id' as level, (e.data->>'restarts')::int as restarts,
+       (e.data->>'moves')::int as final_moves, (e.data->>'totalMoves')::int as total_moves
+from events e join sessions s using (session_key)
+where e.type = 'level_done' and s.mode <> 'dev' order by s.pid, e.at;
+```
+
 ## Editing levels
 
 Use the **level editor** on the development link: open `/play/1/`, then click **Open level editor** (or go straight to `/play/1/#editor`).

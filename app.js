@@ -291,7 +291,7 @@ function startLevel(){const def=S.plan[S.i];
  L=loadLevel(def);save();
  G={r:L.start[0],c:L.start[1],o:O0.slice(),hist:[],moves:0,undos:0,blocked:0,t:now(),lastAct:now(),done:false,skipped:false,
   hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
-  visits:new Map(),blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0};
+  visits:new Map(),allStates:new Set(),restarts:0,movesBefore:0,blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0};
  G.best=dist();G.lastD=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
  log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,hash:L.hash,edited:!!(DEV&&window.RDM_EDITOR&&RDM_EDITOR.edited(L.id)&&S.useEdits),assist:assist()?S.cond:"none"});buildGame();
  clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
@@ -306,6 +306,14 @@ function act(d){if(!G||G.done||DLG)return;endHint("move");const m=tryMove(L,G.r,
  if(m.tile){const first=!S.log.some(e=>e.type=="tile"&&e.tile==m.tile);
   if(first){G.msg="Something happened to the die on that square.";G.msgInfo=true;G.discovered=true}log("tile",{tile:m.tile,first})}
  log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move")}
+/* Restart: die back to the start, move counter back to 0. Undos, blocks, hints and time keep counting
+   for the level; moves from earlier attempts are kept in totalMoves. The struggle score is kept, but
+   progress tracking restarts from the start square so the next attempt can earn "progress" again. */
+function restart(){if(!G||G.done||DLG)return;endHint("restart");const prev=G.moves;
+ G.restarts++;G.movesBefore+=G.moves;G.visits.forEach((_,k)=>G.allStates.add(k));
+ G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.moves=0;G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
+ G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;
+ if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesBefore:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
 function undo(){if(!G||G.done||!G.hist.length||DLG)return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
 /* ---- struggle detector v2: productive vs unproductive (see DETECTOR.md) ---- */
 function evalState(kind){const W_=CFG.W,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
@@ -360,7 +368,7 @@ function drawBulb(){const el=$("#bulb");if(!el||!G)return;if(!assist()||G.done){
 function finish(skipped){endHint(skipped?"skip":"solved");G.done=true;G.skipped=skipped;clearInterval(idleTimer);
  const e={level:S.i+1,id:L.id,hash:L.hash,phase:L.phase,tier:L.tier,kind:L.tier,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
   undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,hintOffers:G.offers,hintOfferUnused:!!G.offer,hintMs:G.hintMs,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
-  uniqueStates:G.visits.size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
+  restarts:G.restarts,totalMoves:G.movesBefore+G.moves,uniqueStates:new Set([...G.allStates,...G.visits.keys()]).size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
  drawPanel();drawBulb();setTimeout(drawDone,skipped?0:450)}
 function next(){S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else quizStart()}
@@ -388,10 +396,10 @@ function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const dn=G.done,ll=l
  <div class="rule"><span class="sw">#</span><div>Numbered squares check the <b>${L.rule=="top"?"top face":"bottom face"}</b>${L.rule=="bottom"?" (touching the board)":""}.</div></div>
  ${netHTML(G.o)}
  <div class="pad"><button class="n" data-d="N" aria-label="Roll up">▲</button><button class="w" data-d="W" aria-label="Roll left">◀</button><button class="s" data-d="S" aria-label="Roll down">▼</button><button class="e" data-d="E" aria-label="Roll right">▶</button></div>
- <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
+ <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button><button id="rst" ${dn?"disabled":""} title="Start this level again from the beginning">⟲ Restart</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
  <div class="msg ${G.msgInfo?"info":""}" role="status">${G.msg}</div>`;
  pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
- $("#un").onclick=undo;if(DEV)drawHud();
+ $("#un").onclick=undo;$("#rst").onclick=restart;if(DEV)drawHud();
  if($("#sk"))$("#sk").onclick=async()=>{if(await ask("Skip this level?","It will be recorded as unsolved.","Skip level"))finish(true)}}
 function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$("#doneOv"))return;const isPrac=L.phase=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
  const el=document.createElement("div");el.className="doneOv";el.id="doneOv";el.setAttribute("role","dialog");el.setAttribute("aria-label","Level complete");
@@ -508,7 +516,7 @@ function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.sty
  <div class="hudr">${G.recent.map(t=>`<i class="${t}">${t.replace("_"," ")}</i>`).join("")}</div>`}
 
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="hidden"&&S)flush()});
-window.__rdm={CFG,MODE,devGo,get LV(){return LV},get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
+window.__rdm={CFG,MODE,devGo,restart,get LV(){return LV},get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
 // start once every script on the page (levels.js, editor.js on the dev link) has loaded
 function boot(){if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`;return}
  if(DEV&&location.hash=="#editor"&&window.RDM_EDITOR)return RDM_EDITOR.open();welcome()}
