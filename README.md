@@ -46,6 +46,26 @@ Every session (links 2–4): practice → **30 training levels** (assistance per
 
 Levels are generated and verified by `tools/gen_levels.py`, which writes `levels.js`. Every level is solved exactly, and every ↻/⇅ square is necessary (removing it makes the level longer or unsolvable). See the script for the difficulty targets. To change the levels, edit the plan in the script and run `python3 tools/gen_levels.py`.
 
+## Editing levels
+
+Use the **level editor** on the development link: open `/play/1/`, then click **Open level editor** (or go straight to `/play/1/#editor`).
+
+1. **Pick a level** from the list on the left.
+2. **Paint** with the tools above the board (click or drag). You can use keys too: `W` wall, `1`–`6` number squares, `R` ↻, `F` ⇅, `S` start, `X` exit, `0` empty, `P` show/hide the solution. Board size, the rule (top or bottom face) and the difficulty tier are above the board.
+3. **Check the analysis** on the right. It updates on every change, using the same solver as the game:
+   - whether the level can be solved, and its best solution length (with the change from the published version)
+   - the *lock detour* (extra moves the number squares force) and how many numbers the best path crosses
+   - whether each ↻/⇅ square is actually needed (an unneeded one can be skipped, so players might never discover it)
+   - a warning if the best solution is outside the tier's usual range (easy 4–8, medium 9–13, hard 13–20)
+   - the best path, drawn on the board as numbered steps
+4. **See what you changed** in *Changes from the published level*, or click **All changes & publish** to see every edited level, with the best-solution length before and after. **Revert** undoes one level or all of them.
+5. **Play-test** with **▶ Play test**. It opens that level in the game with your edits, using the condition chosen on the dev setup screen. Use **✎ Edit this level** in the detector panel to go back to the editor.
+6. **Publish** from *All changes & publish*: **Copy new levels.js**, open `levels.js` on GitHub in edit mode (the dialog links to it), select all, paste, and **Commit changes**. The live game updates within a couple of minutes.
+
+Edits are saved in your browser only until you publish, so participants never see work in progress. The dev setup screen's **Play my edited levels** box chooses whether dev sessions use your edits or the published levels.
+
+`levels.js` has **one level per line**, so a commit's diff on GitHub shows exactly which levels changed. Every `level_start` and `level_done` event records a `hash` of the level's layout, so you can tell which version of a level each participant played. Dev play-tests of unpublished edits are also marked `edited: true`. Re-running `tools/gen_levels.py` regenerates all levels from scratch and **replaces hand edits**.
+
 ## Hints and the struggle detector
 
 See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next 3 optimal moves and loops until the player gives any input.
@@ -57,7 +77,8 @@ See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle 
 | `index.html` | Experimenter page with the four links |
 | `play/1..4/index.html` | Study pages; each sets the condition and loads the shared files |
 | `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
-| `levels.js` | Generated levels |
+| `levels.js` | The levels, one per line (generated, then hand-edited with the level editor) |
+| `editor.js` | Level editor (loaded on the development link only) |
 | `supabase/schema.sql` | Full database setup for a new project |
 | `supabase/migration.sql` | Upgrade for an existing project (cumulative; safe to rerun) |
 

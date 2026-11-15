@@ -51,10 +51,12 @@ const O0=[1,2,3];
 function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const LV=window.RDM_LEVELS;
+let LV=window.RDM_LEVELS;
+// short fingerprint of a level's layout, logged with every level so analysis can tell edited versions apart
+function levelHash(d){const t=JSON.stringify([d.n,d.rule,d.start,d.exit,d.rows]);let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(16).padStart(8,"0")}
 function planFor(m){return m.session==1?[...LV.practice,...LV.training,...LV.immediate]:[...LV.delayed]}
 function loadLevel(def){const g=def.rows.map(r=>[...r].map(ch=>({w:ch=="#",num:/[1-6]/.test(ch)?+ch:0,tile:ch=="S"?"spin":ch=="F"?"flip":null})));
- return{id:def.id,phase:def.phase,tier:def.tier,n:def.n,g,start:def.start,exit:def.exit,rule:def.rule,kind:def.tier,opt:def.opt}}
+ return{hash:levelHash(def),id:def.id,phase:def.phase,tier:def.tier,n:def.n,g,start:def.start,exit:def.exit,rule:def.rule,kind:def.tier,opt:def.opt}}
 
 /* ======================= 2D ART ======================= */
 const PIPS={1:[[.5,.5]],2:[[.27,.27],[.73,.73]],3:[[.27,.27],[.5,.5],[.73,.73]],4:[[.27,.27],[.73,.27],[.27,.73],[.73,.73]],5:[[.27,.27],[.73,.27],[.5,.5],[.27,.73],[.73,.73]],6:[[.27,.25],[.73,.25],[.27,.5],[.73,.5],[.27,.75],[.73,.75]]};
@@ -291,7 +293,7 @@ function startLevel(){const def=S.plan[S.i];
   hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
   visits:new Map(),blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0};
  G.best=dist();G.lastD=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
- log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,assist:assist()?S.cond:"none"});buildGame();
+ log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,hash:L.hash,edited:!!(DEV&&window.RDM_EDITOR&&RDM_EDITOR.edited(L.id)&&S.useEdits),assist:assist()?S.cond:"none"});buildGame();
  clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
 function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
 function act(d){if(!G||G.done||DLG)return;endHint("move");const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
@@ -356,7 +358,7 @@ function drawBulb(){const el=$("#bulb");if(!el||!G)return;if(!assist()||G.done){
  el.innerHTML=`<button class="bulbBtn" id="bulbBtn" aria-label="${ad?"Assistant hint":"Get a hint"}" ${s=="watch"?"disabled":""}>${BULB}</button>${lbl?`<div class="bulbLbl">${lbl}</div>`:""}${G.hint?hintCaption():""}`;
  const b=$("#bulbBtn");b.onclick=e=>{e.stopPropagation();if(G.hint)return;if(ad){if(G.offer){log("help_click",{offer:true,waitedMs:now()-(G.offerAt||now())});giveHint(true)}}else{log("help_click");giveHint(false)}}}
 function finish(skipped){endHint(skipped?"skip":"solved");G.done=true;G.skipped=skipped;clearInterval(idleTimer);
- const e={level:S.i+1,id:L.id,phase:L.phase,tier:L.tier,kind:L.tier,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
+ const e={level:S.i+1,id:L.id,hash:L.hash,phase:L.phase,tier:L.tier,kind:L.tier,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
   undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,hintOffers:G.offers,hintOfferUnused:!!G.offer,hintMs:G.hintMs,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
   uniqueStates:G.visits.size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
@@ -441,7 +443,13 @@ const DEVK="rdm3_dev_prefs";let devTimer=null;
 function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
 const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
-function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=null;G=null;Q=null;V.host=null;const pr=devPrefs();applyCfg(pr.cfg);
+function devStop(){clearInterval(devTimer);clearInterval(idleTimer);if(S&&!S.finished)flush();if(G)endHint("dev_leave");S=null;L=null;G=null;Q=null;V.host=null;stopGhost()}
+function useLevels(on){if(window.RDM_EDITOR)LV=on?RDM_EDITOR.merged():RDM_EDITOR.original()}
+function devPlaytest(id){const pr=devPrefs();const cond=MODES[pr.cond]&&MODES[pr.cond].session==1?pr.cond:"control";useLevels(true);
+ const i=planFor(MODES[cond]).findIndex(d=>d.id==id);
+ devStart({...pr,cond,start:Math.max(0,i),intro:false,hud:true,useEdits:true,first:pr.first||"Dev",last:pr.last||"Tester",save:pr.save!==false})}
+function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.useEdits!==false);
+ const nEd=window.RDM_EDITOR?RDM_EDITOR.count():0;
  const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"]];
  const num=(id,v,step)=>`<input id="${id}" type="number" step="${step}" value="${v}">`;
  app.innerHTML=bar(`<span class="chip">Development</span>`)+`<main class="screen"><div class="sheet wide">
@@ -455,7 +463,9 @@ function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=nu
   <label class="tog"><input type="checkbox" id="dh" ${pr.hud!==false?"checked":""}> Show detector panel on the board</label>
   <label class="tog"><input type="checkbox" id="ds" ${pr.save!==false?"checked":""}> Save to Supabase</label>
   <label class="tog"><input type="checkbox" id="di" ${pr.intro?"checked":""}> Show intro and rule-change screens</label>
+  ${window.RDM_EDITOR?`<label class="tog"><input type="checkbox" id="due" ${pr.useEdits!==false?"checked":""}> Play my edited levels <span class="mu">(${nEd} edited in this browser)</span></label>`:""}
  </div></div>
+ ${window.RDM_EDITOR?`<div class="note" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span><b>Level editor:</b> change any level, see the solver's analysis live, play-test it, then publish.</span><button id="ged">Open level editor</button></div>`:""}
  <h3 style="font-size:18px;margin-top:22px">Hint and detector settings</h3>
  <div class="cfg">${Object.keys(CFG_DEFAULT).filter(k=>k!="W").map(k=>`<div><label for="c_${k}">${k}</label>${typeof CFG[k]=="boolean"?`<select id="c_${k}"><option value="true" ${CFG[k]?"selected":""}>true</option><option value="false" ${CFG[k]?"":"selected"}>false</option></select>`:num("c_"+k,CFG[k],k=="stagnationFactor"?.1:1)}<div class="hint2">${CFG_HELP[k]||""}${CFG[k]!==CFG_DEFAULT[k]?` · default ${CFG_DEFAULT[k]}`:""}</div></div>`).join("")}</div>
  <h3 style="font-size:18px;margin-top:18px">Struggle weights <span class="mu" style="font-size:14px;font-weight:400">(see DETECTOR.md)</span></h3>
@@ -466,12 +476,14 @@ function devSetup(){clearInterval(devTimer);clearInterval(idleTimer);S=null;L=nu
  const fillLevels=()=>{const m=MODES[$("#dc").value],pl=planFor(m);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${pr.cond==$("#dc").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
  fillLevels();$("#dc").onchange=fillLevels;
  const read=()=>{const c={W:{}};for(const k in CFG_DEFAULT){if(k=="W")continue;const el=$("#c_"+k);c[k]=typeof CFG_DEFAULT[k]=="boolean"?el.value=="true":+el.value}for(const k in CFG_DEFAULT.W)c.W[k]=+$("#w_"+k).value;return c};
- const store=()=>{const c=read();applyCfg(c);const p={cond:$("#dc").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
+ const store=()=>{const c=read();applyCfg(c);const p={useEdits:$("#due")?$("#due").checked:true,cond:$("#dc").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
  $("#rs").onclick=()=>{const p=devPrefs();delete p.cfg;LS.set(DEVK,JSON.stringify(p));for(const k in CFG_DEFAULT)CFG[k]=k=="W"?{...CFG_DEFAULT.W}:CFG_DEFAULT[k];devSetup()};
  $("#cp").onclick=async()=>{store();const t="const CFG="+JSON.stringify(CFG,null,1).replace(/\n\s*/g," ")+";";const ta=$("#code");ta.style.display="block";ta.value=t;ta.select();try{await navigator.clipboard.writeText(t);$("#cp").textContent="Copied"}catch(e){$("#cp").textContent="Select and copy below"}};
- $("#go").onclick=()=>{const p=store();devStart(p)}}
-function devStart(p){M={...MODES[p.cond],label:"Development · "+p.cond};
- SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;
+ $("#go").onclick=()=>{const p=store();devStart(p)};
+ if($("#due"))$("#due").onchange=()=>{useLevels($("#due").checked);fillLevels()};
+ if($("#ged"))$("#ged").onclick=()=>{store();RDM_EDITOR.open()}}
+function devStart(p){useLevels(p.useEdits!==false);M={...MODES[p.cond],label:"Development · "+p.cond};
+ SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;S.useEdits=p.useEdits!==false;
  if(!p.intro)S.seen={immediate:true,bottom:true};
  log("session_start",{pid:S.pid,firstName:S.first,lastName:S.last,mode:"dev",devCondition:p.cond,session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
  clearInterval(devTimer);devTimer=setInterval(()=>{if(G&&!G.done)drawHud()},1000);
@@ -479,12 +491,12 @@ function devStart(p){M={...MODES[p.cond],label:"Development · "+p.cond};
 function devGo(i){if(!S)return;if(G)endHint("dev_jump");i=Math.max(0,Math.min(S.plan.length-1,i));log("dev_jump",{from:S.i,to:i});S.i=i;G=null;startLevel()}
 function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.style.display="none";return}
  if(!el.dataset.built){el.dataset.built=1;el.innerHTML=`<button class="hudMin" id="hudMin" aria-label="Collapse detector panel">–</button><div id="hudS"></div><div class="hudb"><button data-h="hint">Hint now</button><button data-h="fire">Fire detector</button><button data-h="solve">Solve</button><button data-h="restart">Restart</button>
-  <button data-h="prev">◀ Prev</button><button data-h="next">Next ▶</button><button data-h="quiz">Quiz</button><button data-h="setup">Setup</button></div>`;
+  <button data-h="prev">◀ Prev</button><button data-h="next">Next ▶</button><button data-h="quiz">Quiz</button><button data-h="setup">Setup</button>${window.RDM_EDITOR?`<button data-h="edit" class="hudWide">✎ Edit this level</button>`:""}</div>`;
   $("#hudMin").onclick=e=>{e.stopPropagation();S.hudMin=!S.hudMin;el.classList.toggle("min",S.hudMin);$("#hudMin").textContent=S.hudMin?"+":"–"};if(S.hudMin){el.classList.add("min");$("#hudMin").textContent="+"}
   el.querySelectorAll("[data-h]").forEach(b=>b.onclick=e=>{e.stopPropagation();if(!G||!S)return;const h=b.dataset.h;
    if(h=="hint"){if(!G.done)giveHint(false)}else if(h=="fire"){if(!G.done)fire(true)}else if(h=="solve"){if(!G.done){endHint("dev");(bfs(L,G.r,G.c,G.o)||[]).forEach(d=>act(d))}}
    else if(h=="restart")devGo(S.i);else if(h=="prev")devGo(S.i-1);else if(h=="next")devGo(S.i+1);else if(h=="quiz"){endHint("dev");G=null;quizStart()}
-   else if(h=="setup"){flush();devSetup()}})}
+   else if(h=="setup"){flush();devSetup()}else if(h=="edit"){RDM_EDITOR.open(L.id)}})}
  const d=G.lastD,budget=Math.max(CFG.stagnationBase,Math.ceil(CFG.stagnationFactor*(d==Infinity||d==null?G.best:d))),g=gate(),pct=Math.min(100,G.score/CFG.threshold*100);
  const last=G.recent[G.recent.length-1]||"–",live=assist()&&S.cond=="adaptive";
  $("#hudS").innerHTML=`<div class="hudh"><b>Detector</b><span>${L.id} · ${L.phase}/${L.tier} · best ${L.opt}</span></div>
@@ -496,5 +508,8 @@ function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.sty
  <div class="hudr">${G.recent.map(t=>`<i class="${t}">${t.replace("_"," ")}</i>`).join("")}</div>`}
 
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="hidden"&&S)flush()});
-window.__rdm={CFG,MODE,devGo,get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
-if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`}else welcome();
+window.__rdm={CFG,MODE,devGo,get LV(){return LV},get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
+// start once every script on the page (levels.js, editor.js on the dev link) has loaded
+function boot(){if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`;return}
+ if(DEV&&location.hash=="#editor"&&window.RDM_EDITOR)return RDM_EDITOR.open();welcome()}
+if(document.readyState=="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
