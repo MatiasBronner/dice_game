@@ -513,3 +513,4 @@ window.__rdm={CFG,MODE,devGo,get LV(){return LV},get S(){return S},get G(){retur
 function boot(){if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`;return}
  if(DEV&&location.hash=="#editor"&&window.RDM_EDITOR)return RDM_EDITOR.open();welcome()}
 if(document.readyState=="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
+if(DEV)window.addEventListener("hashchange",()=>{if(location.hash=="#editor"&&window.RDM_EDITOR&&!$("#egrid"))RDM_EDITOR.open()});

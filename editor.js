@@ -15,13 +15,17 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 const orig=id=>{for(const g in ORIG)for(const l of ORIG[g])if(l.id==id)return l;return null};
 const key=d=>JSON.stringify([d.n,d.rule,d.start,d.exit,d.rows,d.tier]);
 function edits(){let e={};try{e=JSON.parse(localStorage.getItem(EK))||{}}catch(_){}
- for(const id in e){const o=orig(id);if(!o||key(o)==key({...o,...e[id]}))delete e[id]}return e}
+ for(const id in e){const o=orig(id);if(!o||(!e[id].deleted&&key(o)==key({...o,...e[id]})))delete e[id]}return e}
+const isDel=id=>!!(edits()[id]||{}).deleted;
+function setDeleted(id,on){const e=edits();if(on)e[id]={deleted:true};else delete e[id];try{localStorage.setItem(EK,JSON.stringify(e))}catch(_){}}
+// a group must keep at least one level, so the game always has practice, training and test levels
+function canDelete(id){for(const g of SHOWN){const l=ORIG[g];if(l.some(x=>x.id==id))return l.filter(x=>x.id!=id&&!isDel(x.id)).length>0}return false}
 function putEdit(d){const e=edits(),o=orig(d.id);if(key(o)==key(d))delete e[d.id];else e[d.id]={n:d.n,rule:d.rule,start:d.start,exit:d.exit,rows:d.rows,tier:d.tier};
  try{localStorage.setItem(EK,JSON.stringify(e))}catch(_){}}
 function dropEdit(id){const e=edits();delete e[id];try{localStorage.setItem(EK,JSON.stringify(e))}catch(_){}}
-function current(id){const o=orig(id),e=edits()[id];return e?{...clone(o),...clone(e)}:clone(o)}
-function withMetrics(d){const m=analyze(d);if(!m.solvable)return d;const{solvable,...rest}=m;return{...d,opt:m.opt,metrics:rest}}
-function merged(){const e=edits(),out={};for(const g in ORIG)out[g]=ORIG[g].map(l=>e[l.id]?withMetrics({...clone(l),...clone(e[l.id])}):l);return out}
+function current(id){const o=orig(id),e=edits()[id];return e&&!e.deleted?{...clone(o),...clone(e)}:clone(o)}
+function withMetrics(d){const m=analyze(d);if(!m.solvable)return d;const{solvable,cells,...rest}=m;return{...d,opt:m.opt,metrics:rest}}
+function merged(){const e=edits(),out={};for(const g in ORIG)out[g]=ORIG[g].filter(l=>!(e[l.id]&&e[l.id].deleted)).map(l=>e[l.id]?withMetrics({...clone(l),...clone(e[l.id])}):l);return out}
 
 /* ---------- analysis (same measures as tools/gen_levels.py) ---------- */
 function analyze(d){const st=d.start,solve=def=>bfs(loadLevel(def),st[0],st[1],[1,2,3]);
@@ -41,7 +45,7 @@ function validate(d){const n=d.n,inb=([r,c])=>r>=0&&c>=0&&r<n&&c<n;
  if(d.rows[d.exit[0]][d.exit[1]]!=".")return"The exit square must be empty.";return""}
 
 /* ---------- change summary ---------- */
-function changes(d){const o=orig(d.id),out=[];if(!o)return out;
+function changes(d){const o=orig(d.id),out=[];if(!o)return out;if(isDel(d.id))return["Deleted"];
  if(o.n!=d.n)out.push(`Board ${o.n}×${o.n} → ${d.n}×${d.n}`);
  let k=0;for(let r=0;r<Math.max(o.n,d.n);r++)for(let c=0;c<Math.max(o.n,d.n);c++){const a=(o.rows[r]||"")[c],b=(d.rows[r]||"")[c];if(a!==undefined&&b!==undefined&&a!==b)k++}
  if(k)out.push(`${k} square${k>1?"s":""} changed`);
@@ -54,8 +58,9 @@ const E={id:null,d:null,tool:"#",path:true,painting:false,last:null};
 function open(id){if(typeof devStop=="function")devStop();E.id=id&&orig(id)?id:(E.id||"T01");E.d=current(E.id);
  try{history.replaceState(null,"","#editor")}catch(_){}render()}
 function listHTML(){const e=edits();return SHOWN.map(g=>`<div class="elg">${GL[g]}</div>`+ORIG[g].map(l=>{const c=e[l.id]?{...l,...e[l.id]}:l;
- return`<button class="eli${l.id==E.id?" on":""}" data-id="${l.id}"><span>${l.id}</span><span class="mu">${c.tier}${c.rule=="bottom"?" · bottom":""}</span>${e[l.id]?`<i class="edot" title="Edited"></i>`:""}</button>`}).join("")).join("")}
-function render(){const d=E.d,n=d.n,nEd=Object.keys(edits()).length;
+ const del=e[l.id]&&e[l.id].deleted;
+ return`<button class="eli${l.id==E.id?" on":""}${del?" del":""}" data-id="${l.id}"><span>${l.id}</span><span class="mu">${del?"deleted":c.tier+(c.rule=="bottom"?" · bottom":"")}</span>${e[l.id]?`<i class="edot${del?" x":""}" title="${del?"Deleted":"Edited"}"></i>`:""}</button>`}).join("")).join("")}
+function render(){const d=E.d,n=d.n,nEd=Object.keys(edits()).length,del=isDel(d.id);
  app.innerHTML=bar(`<span class="chip">Development · Level editor</span>`)+`<main class="editor">
  <aside class="elist">${listHTML()}</aside>
  <section class="ecenter">
@@ -64,16 +69,18 @@ function render(){const d=E.d,n=d.n,nEd=Object.keys(edits()).length;
    <label>Numbers check<select id="erule"><option value="top" ${d.rule=="top"?"selected":""}>top face</option><option value="bottom" ${d.rule=="bottom"?"selected":""}>bottom face</option></select></label>
    ${d.phase=="training"?`<label>Tier<select id="etier">${["easy","medium","hard"].map(t=>`<option ${t==d.tier?"selected":""}>${t}</option>`).join("")}</select></label>`:""}</div></div>
   <div class="tools" role="toolbar" aria-label="Paint tools">${TOOLS.map(([k,l,s])=>`<button class="tool t${k=="."?"empty":k=="#"?"wall":/\d/.test(k)?"lock":k}${E.tool==k?" on":""}" data-t="${k}" title="${l} (key ${s.toUpperCase()})">${l}</button>`).join("")}</div>
-  <div class="egrid" id="egrid" style="grid-template-columns:repeat(${n},1fr)">${Array.from({length:n*n},(_,i)=>`<div class="ecell" data-r="${Math.floor(i/n)}" data-c="${i%n}"></div>`).join("")}</div>
+  ${del?`<div class="note bad" style="max-width:560px;width:100%;margin:0">This level is marked for deletion. It's gone from your play-tests now and will be removed from the live game when you publish.</div>`:""}
+  <div class="egrid${del?" deleted":""}" id="egrid" style="grid-template-columns:repeat(${n},1fr)">${Array.from({length:n*n},(_,i)=>`<div class="ecell" data-r="${Math.floor(i/n)}" data-c="${i%n}"></div>`).join("")}</div>
   <p class="mu ehelp">Click or drag to paint. Keys: <kbd>W</kbd> wall, <kbd>1</kbd>–<kbd>6</kbd> numbers, <kbd>R</kbd> ↻, <kbd>F</kbd> ⇅, <kbd>S</kbd> start, <kbd>X</kbd> exit, <kbd>0</kbd> empty, <kbd>P</kbd> show/hide solution.</p>
  </section>
  <aside class="eside" id="eside"></aside></main>`;
  app.querySelectorAll(".eli").forEach(b=>b.onclick=()=>open(b.dataset.id));
  app.querySelectorAll(".tool").forEach(b=>b.onclick=()=>{E.tool=b.dataset.t;app.querySelectorAll(".tool").forEach(x=>x.classList.toggle("on",x===b))});
+ if(del)app.querySelectorAll(".etop select,.tool").forEach(x=>x.disabled=true);
  $("#esz").onchange=e=>resize(+e.target.value);$("#erule").onchange=e=>{E.d.rule=e.target.value;changed()};
  if($("#etier"))$("#etier").onchange=e=>{E.d.tier=e.target.value;changed()};
  const g=$("#egrid"),at=e=>{const el=document.elementFromPoint(e.clientX,e.clientY);return el&&el.closest&&el.closest(".ecell")};
- g.onpointerdown=e=>{const c=e.target.closest(".ecell");if(!c)return;e.preventDefault();E.painting=true;E.last=null;paint(c)};
+ g.onpointerdown=e=>{const c=e.target.closest(".ecell");if(!c||isDel(E.d.id))return;e.preventDefault();E.painting=true;E.last=null;paint(c)};
  g.onpointermove=e=>{if(!E.painting)return;const c=at(e);if(c)paint(c)};
  window.onpointerup=()=>{if(E.painting){E.painting=false;changed()}};
  changed(true)}
@@ -93,7 +100,7 @@ function drawCells(m){const d=E.d,steps={};
   el.className="ecell "+(isS?"cstart":isX?"cexit":ch=="#"?"cwall":/[1-6]/.test(ch)?"clock":ch=="S"?"cspin":ch=="F"?"cflip":"");
   const st=steps[r+","+c];
   el.innerHTML=`<b>${isS?"Start":isX?"⚑":ch=="#"||ch=="."?"":ch=="S"?"↻":ch=="F"?"⇅":ch}</b>${st?`<span class="step">${st.join(",")}</span>`:""}`})}
-function changed(first){const d=E.d,m=analyze(d),o=orig(d.id),om=analyze(o);if(!first)putEdit(d);drawCells(m);
+function changed(first){const d=E.d,m=analyze(d),o=orig(d.id),om=analyze(o);if(!first&&!isDel(d.id))putEdit(d);drawCells(m);
  const ch=changes(d),isEd=ch.length>0,[lo,hi]=TIERS[d.tier]||[0,99],nEd=Object.keys(edits()).length;
  const needTxt=t=>!d.rows.some(x=>x.includes(t))?"not on board":m.solvable&&m.needed[t]?"needed":`<span class="warn">not needed</span>`;
  const delta=m.solvable&&om.solvable&&m.opt!=om.opt?` <span class="mu">(was ${om.opt}, ${m.opt>om.opt?"+":""}${m.opt-om.opt})</span>`:"";
@@ -110,27 +117,33 @@ function changed(first){const d=E.d,m=analyze(d),o=orig(d.id),om=analyze(o);if(!
  <label class="tog" style="margin-top:12px"><input type="checkbox" id="epath" ${E.path?"checked":""}> Show best solution on the board</label>
  <h3 class="eh">Changes from the published level</h3>
  ${isEd?`<ul class="echg">${ch.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="mu" style="margin:4px 0">None. This is the published version.</p>`}
- <div class="ebtns"><button class="btn-p" id="eplay" ${m.solvable?"":"disabled"}>▶ Play test</button><button id="erev" ${isEd?"":"disabled"}>Revert level</button></div>
+ ${isDel(d.id)?`<div class="ebtns"><button class="btn-p" id="eund">Restore level</button></div>`
+ :`<div class="ebtns"><button class="btn-p" id="eplay" ${m.solvable?"":"disabled"}>▶ Play test</button><button id="erev" ${isEd?"":"disabled"}>Revert level</button></div>
+ <div class="ebtns"><button class="edel" id="edel" ${canDelete(d.id)?"":`disabled title="Each section needs at least one level"`}>Delete level</button></div>`}
  <div class="ebtns"><button id="eall">All changes${nEd?` (${nEd})`:""} & publish</button><button class="btn-ghost" id="eback">Dev setup</button></div>`;
  $("#epath").onchange=e=>{E.path=e.target.checked;drawCells(m)};
- $("#eplay").onclick=()=>{if(typeof devPlaytest=="function")devPlaytest(d.id)};
- $("#erev").onclick=async()=>{if(await ask("Revert "+d.id+"?","Your changes to this level will be discarded.","Revert")){dropEdit(d.id);open(d.id)}};
+ if($("#eund"))$("#eund").onclick=()=>{setDeleted(d.id,false);open(d.id)};
+ if($("#eplay"))$("#eplay").onclick=()=>{if(typeof devPlaytest=="function")devPlaytest(d.id)};
+ if($("#erev"))$("#erev").onclick=async()=>{if(await ask("Revert "+d.id+"?","Your changes to this level will be discarded.","Revert")){dropEdit(d.id);open(d.id)}};
+ if($("#edel"))$("#edel").onclick=async()=>{if(await ask("Delete "+d.id+"?",`It will be removed from the game when you publish. Other levels keep their IDs, so earlier data stays comparable. You can restore it any time before publishing.${isEd?" Your unpublished edits to it will be discarded.":""}`,"Delete level")){setDeleted(d.id,true);open(d.id)}};
  $("#eall").onclick=summary;$("#eback").onclick=()=>{try{history.replaceState(null,"",location.pathname)}catch(_){}devSetup()};
- const it=app.querySelector(`.eli[data-id="${d.id}"]`);if(it){const has=!!edits()[d.id];let dot=it.querySelector(".edot");if(has&&!dot)it.insertAdjacentHTML("beforeend",`<i class="edot" title="Edited"></i>`);if(!has&&dot)dot.remove()}}
+ const it=app.querySelector(`.eli[data-id="${d.id}"]`);if(it&&!isDel(d.id)){const has=!!edits()[d.id];let dot=it.querySelector(".edot");if(has&&!dot)it.insertAdjacentHTML("beforeend",`<i class="edot" title="Edited"></i>`);if(!has&&dot)dot.remove()}}
 
 /* ---------- all changes + export ---------- */
 function levelsJS(){const m=merged(),groups=Object.keys(m);
  return"// Rolling Die Maze levels: one level per line. Generated by tools/gen_levels.py, then edited with the\n// level editor (development link → Level editor). Re-running the generator replaces hand edits.\n"+
   "window.RDM_LEVELS={\n"+groups.map(g=>JSON.stringify(g)+":[\n"+m[g].map(l=>JSON.stringify(l)).join(",\n")+"\n]").join(",\n")+"\n};\n"}
 function summary(){const e=edits(),ids=Object.keys(e).sort();
- const rows=ids.map(id=>{const d=current(id),a=analyze(orig(id)),b=analyze(d);
-  return`<tr><td><b>${id}</b></td><td>${changes(d).map(esc).join(" · ")}</td><td>${a.solvable?a.opt:"–"} → ${b.solvable?b.opt:`<span class="warn">unsolvable</span>`}</td><td><button data-o="${id}">Open</button> <button data-rv="${id}">Revert</button></td></tr>`}).join("");
- const bad=ids.filter(id=>!analyze(current(id)).solvable);
+ const rows=ids.map(id=>{const d=current(id),a=analyze(orig(id)),b=analyze(d),del=isDel(id);
+  return`<tr><td><b>${id}</b></td><td>${changes(d).map(esc).join(" · ")}</td><td>${del?"removed":`${a.solvable?a.opt:"–"} → ${b.solvable?b.opt:`<span class="warn">unsolvable</span>`}`}</td><td><button data-o="${id}">Open</button> <button data-rv="${id}">${del?"Restore":"Revert"}</button></td></tr>`}).join("");
+ const bad=ids.filter(id=>!isDel(id)&&!analyze(current(id)).solvable);
+ const m=merged(),counts=`Practice ${m.practice.length} · Training ${m.training.length} · End-of-session test ${m.immediate.length}`;
  const dl=document.createElement("div");dl.className="dlg";dl.innerHTML=`<div class="sheet wide" role="dialog" aria-modal="true" style="max-height:90vh;overflow:auto">
  <div class="eyebrow">Level editor</div><h2 style="font-size:26px;margin:4px 0 10px">Your changes</h2>
  ${ids.length?`<div class="tbl"><table><tr><th>Level</th><th>What changed</th><th>Best moves</th><th></th></tr>${rows}</table></div>`:`<p class="mu">You haven't changed any levels.</p>`}
  ${bad.length?`<div class="note bad">${bad.join(", ")} can't be solved. Fix ${bad.length>1?"them":"it"} before publishing.</div>`:""}
- <p class="mu" style="font-size:14px;margin-top:14px">Changes live only in this browser until you publish them. Participants keep playing the published levels until then.</p>
+ <p style="font-size:14px;margin:12px 0 0">After publishing: <b>${counts}</b> levels.</p>
+ <p class="mu" style="font-size:14px;margin-top:6px">Changes live only in this browser until you publish them. Participants keep playing the published levels until then.</p>
  ${ids.length?`<h3 style="font-size:17px;margin:16px 0 6px">Publish to the live game</h3>
  <ol class="steps"><li>Click <b>Copy new levels.js</b>.</li><li>Open <a href="${PUBLISH_URL}" target="_blank" rel="noopener">levels.js on GitHub</a> (you'll be in edit mode).</li><li>Select all the text there, paste, then click <b>Commit changes</b>.</li></ol>
  <p class="mu" style="font-size:14px">The live game updates within a couple of minutes. GitHub's commit view shows exactly which levels changed, one line per level.</p>`:""}

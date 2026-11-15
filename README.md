@@ -59,8 +59,9 @@ Use the **level editor** on the development link: open `/play/1/`, then click **
    - a warning if the best solution is outside the tier's usual range (easy 4–8, medium 9–13, hard 13–20)
    - the best path, drawn on the board as numbered steps
 4. **See what you changed** in *Changes from the published level*, or click **All changes & publish** to see every edited level, with the best-solution length before and after. **Revert** undoes one level or all of them.
-5. **Play-test** with **▶ Play test**. It opens that level in the game with your edits, using the condition chosen on the dev setup screen. Use **✎ Edit this level** in the detector panel to go back to the editor.
-6. **Publish** from *All changes & publish*: **Copy new levels.js**, open `levels.js` on GitHub in edit mode (the dialog links to it), select all, paste, and **Commit changes**. The live game updates within a couple of minutes.
+5. **Delete** a level with **Delete level**. It's struck through in the list, disappears from your play-tests, and is removed from the game when you publish. **Restore level** undoes it any time before then. Each section (practice, training, end-of-session test) must keep at least one level. Level IDs don't change when you delete, so data from before and after stays comparable. For example, after deleting T05 the training levels run T01–T04, T06–T30, and players see "Level 5 / 29" on T06.
+6. **Play-test** with **▶ Play test**. It opens that level in the game with your edits, using the condition chosen on the dev setup screen. Use **✎ Edit this level** in the detector panel to go back to the editor.
+7. **Publish** from *All changes & publish* (it also shows how many levels each section will have): **Copy new levels.js**, open `levels.js` on GitHub in edit mode (the dialog links to it), select all, paste, and **Commit changes**. The live game updates within a couple of minutes.
 
 Edits are saved in your browser only until you publish, so participants never see work in progress. The dev setup screen's **Play my edited levels** box chooses whether dev sessions use your edits or the published levels.
 

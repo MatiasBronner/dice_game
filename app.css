@@ -170,7 +170,10 @@ textarea{width:100%;height:120px;background:rgba(10,14,30,.6);color:var(--ink);b
 .elg{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:12px 6px 4px}
 .eli{display:grid;grid-template-columns:44px 1fr 10px;align-items:center;gap:6px;text-align:left;padding:6px 10px;border-radius:9px;font-size:14px;background:transparent;border-color:transparent}
 .eli.on{background:var(--amberbg);border-color:rgba(255,181,71,.45)}.eli span:first-child{font-weight:700;font-variant-numeric:tabular-nums}.eli .mu{font-size:12px}
-.edot{width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block}
+.edot{width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block}.edot.x{background:var(--danger)}
+.eli.del span:first-child{text-decoration:line-through;color:var(--muted)}.eli.del .mu{color:var(--danger)}
+.egrid.deleted{opacity:.35;filter:grayscale(.7)}
+.edel{color:var(--danger);border-color:rgba(255,122,122,.35)}.edel:hover:not(:disabled){background:rgba(255,122,122,.1)}
 .ecenter{padding:18px 22px;display:flex;flex-direction:column;gap:12px;align-items:center;overflow-y:auto}
 .etop{width:100%;max-width:560px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .eid{font-size:38px;font-weight:800;letter-spacing:-.03em;line-height:1}
