@@ -93,10 +93,43 @@ Everything is saved per participant, per session and per level. **Run `supabase/
 | `detector_fires`, `max_struggle` | Struggle detector fires (logged in every group, as a counterfactual where there's no help) and peak score |
 | `hint_details` (jsonb) | One entry per hint, below |
 | `actions` (jsonb) | Every action in order, below: a full replay of the level |
+| `path` | The same thing as readable text, e.g. `[blocked up], [HINT 1: down, right], down, right, undo, restart, …` |
 
 **`actions`**: each entry has `t` (ms since the level started) and `a`, the action: `move`, `blocked`, `undo`, `restart`, `skip`, or (not the player's own) `hint`, `hint_end`, `idle`, `tab_hidden`, `tab_visible`. Player actions also have `dt` (ms since their previous action, i.e. decision time), `p` (die position "row,col") and `o` (orientation: top, back, right faces). Moves add `d` (N/S/E/W), `opt` (true if optimal), `dist` (optimal moves left), `tile` (↻/⇅ if they rolled onto one), `revisit`. Blocked moves add `why` (`wall` or `num`), `face` vs `need` for number squares, and `repeat`.
 
 **`hint_details`**: per hint: `n`, `t` (ms into the level), `how` (`automatic`, `offered` or `clicked`), `sinceLastActionMs` (time since their last action when the hint came or was clicked), `movesSoFar`, `distAtHint`, `shown` (e.g. `EEN`), `len`, `struggleScore` and `cause` (what the detector saw), `lockMs` (adaptive: time they had to watch), `watchedMs`, `endReason` (`move`, `key`, `click`, …), `firstActionAfterMs`, `matched` (how many of the shown moves they then made, in order), `followed` (true if all of them), `followEnd` (why following stopped, e.g. `other move W (also optimal)`), and the die's position and orientation.
+
+### One row per action (`level_actions`) and per hint (`level_hints`)
+
+The same `actions` and `hint_details` as normal tables, so they export straight to a spreadsheet (Table Editor → Export to CSV).
+
+**`level_actions`**: one row per action, in order (`seq`). `step` numbers the player's own actions (1, 2, 3 …). `t_ms` is the time into the level, and `dt_ms` the time since their previous action. `action` is `move`, `blocked`, `undo`, `restart` or `skip` (the player's), or `hint`, `hint_end`, `idle`, `tab_hidden`, `tab_visible`. Each row also has `direction` (up/down/left/right), `move_no` (move counter after it), `pos`, `orientation` and `top_face` (where the die ended up and which way up), `dist_left` (optimal moves left; empty = dead end), `optimal`, `revisit` and `tile`. Blocked moves add `blocked_why`, `face_would_be` and `face_needed`. On hint rows, `hint_n`, `hint_how` and `hint_shown` say which hint it was and what it showed. On the player's actions right after a hint, `hint_n` says which hint and `hint_match` says whether it was the move the hint showed.
+
+**`level_hints`**: one row per hint.
+- `hint_n`, `how` (`automatic` or `clicked`)
+- `t_ms`: when in the level it came
+- `wait_ms`: time since the player's last action, i.e. how long they waited before clicking or before the assistant stepped in
+- `at_move`, `at_roll`, `after_step`: which move it came on
+- `dist_at_hint`: how far from the exit they were
+- `shown`: the moves shown, e.g. "down, right, right"
+- `struggle_score`, `cause`: what the detector saw
+- `lock_ms`, `watched_ms`, `end_reason`, `first_action_after_ms`
+- `matched`: how many shown moves they then made, in order
+- `followed`: whether they made all of them
+- `follow_end`: why following stopped, e.g. "other move: left (also optimal)" or "blocked down"
+
+```sql
+-- every action of every level, in order, with who played it
+select s.pid, s.session, s.grp, a.level_id, a.seq, a.step, a.t_ms, a.dt_ms, a.action, a.direction, a.move_no,
+       a.top_face, a.dist_left, a.optimal, a.hint_n, a.hint_match
+from level_actions a join sessions s using (session_key)
+where s.mode <> 'dev' order by s.pid, s.started_at, a.level, a.seq;
+
+-- every hint: when, after how many moves, how long they waited, and whether they followed it
+select s.pid, s.grp, h.level_id, h.hint_n, h.how, h.t_ms, h.at_move, h.wait_ms, h.shown, h.watched_ms, h.matched, h.followed, h.follow_end
+from level_hints h join sessions s using (session_key)
+where s.mode <> 'dev' order by s.pid, s.started_at, h.level, h.hint_n;
+```
 
 ### Per action (`events`)
 

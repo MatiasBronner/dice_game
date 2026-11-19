@@ -364,18 +364,25 @@ function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
 /* ---- per-level play record (saved with every level: level_results.actions and .hint_details) ----
    Each action: t = ms since the level started, dt = ms since the player's previous action (decision time),
    plus the die's position (p = "row,col") and orientation (o = top,back,right) after it. */
-function rec(a,x={},player=true){const T=G.tr,t=now()-G.t,e={t,a,...x};
- if(player){e.dt=t-T.prevT;T.prevT=t;T.maxPause=Math.max(T.maxPause,e.dt);T.dts.push(e.dt);
+const DIRW={N:"up",S:"down",E:"right",W:"left"};
+function rec(a,x={},player=true){const T=G.tr,t=now()-G.t,e={n:T.acts.length+1,t,a,...x};
+ if(x.d)e.dir=DIRW[x.d];
+ if(player){e.dt=t-T.prevT;T.prevT=t;T.maxPause=Math.max(T.maxPause,e.dt);T.dts.push(e.dt);T.nPlayer=(T.nPlayer||0)+1;e.step=T.nPlayer;e.moveNo=G.moves;e.top=G.o[0];
   const h=T.hints[T.hints.length-1];if(h&&h.firstActionAfterMs==null&&h.endedAt!=null)h.firstActionAfterMs=t-h.t;}
  T.acts.push(e);return e}
 const posx=()=>({p:G.r+","+G.c,o:G.o.join("")});
+// readable path, e.g. "right, up, [blocked left], undo, restart, [HINT 1: down, right], down, right, [skip]"
+function pathText(acts){return acts.map(e=>e.a=="move"?e.dir:e.a=="blocked"?`[blocked ${e.dir}]`:e.a=="undo"?"undo":e.a=="restart"?"restart":e.a=="skip"?"[skip]"
+ :e.a=="hint"?`[HINT ${e.hint}: ${e.words||""}]`:null).filter(Boolean).join(", ")}
 /* did the player do what the last hint showed? Called on each action while a hint is being "followed". */
 function followEnd(ok,why){const f=G.tr.follow;if(!f)return;G.tr.follow=null;const h=f.info;h.followed=ok;h.followEnd=why;
  log("hint_follow",{n:h.n,followed:ok,matched:h.matched,of:h.len,why})}
 function followStep(kind,d,opt){const f=G.tr.follow;if(!f)return;
- if(f.deadend)return followEnd(kind=="undo",kind=="undo"?"undid":kind+(d?":"+d:""));
+ // tag the action just recorded: which hint it came after, and whether it was the move the hint showed
+ const last=G.tr.acts[G.tr.acts.length-1];if(last&&last.dt!=null){last.afterHint=f.info.n;last.hintMatch=f.deadend?kind=="undo":kind=="move"&&d==f.seq[f.info.matched]}
+ if(f.deadend)return followEnd(kind=="undo",kind=="undo"?"undid":kind+(d?" "+DIRW[d]:""));
  if(kind=="move"&&d==f.seq[f.info.matched]){f.info.matched++;if(f.info.matched>=f.seq.length)followEnd(true,"all moves")}
- else followEnd(false,kind=="move"?`other move ${d}${opt?" (also optimal)":""}`:kind+(d?":"+d:""))}
+ else followEnd(false,kind=="move"?`other move: ${DIRW[d]}${opt?" (also optimal)":""}`:kind+(d?" "+DIRW[d]:""))}
 function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
  if(!m.ok){G.blocked++;const bk=skey(G.r,G.c,G.o)+d,rep=G.blockSeen.has(bk);G.blockSeen.add(bk);
   G.msg=m.why=="wall"?"Blocked: wall or edge.":`Blocked: the ${L.rule} face would show ${m.face}, not ${m.need}.`;
@@ -449,9 +456,9 @@ function giveHint(auto){if(!G||G.done)return;const score0=G.score,cause=dominant
  G.hint={auto,seq,deadend:!p,t0:now()};
  // hint record: when it came, how, what it showed, and (filled in later) how long it was watched and whether it was followed
  const T=G.tr,t=now()-G.t,info={n:T.hints.length+1,t,how:auto?(S.cond=="adaptive"&&CFG.adaptiveAutoPlay?"automatic":"offered"):"clicked",sinceLastActionMs:t-T.prevT,
-  movesSoFar:G.moves,distAtHint:p?p.length:null,deadend:!p,shown:seq?seq.join(""):"",len:seq?seq.length:0,struggleScore:+score0.toFixed(2),cause,lockMs:0,watchedMs:null,endReason:null,endedAt:null,
+  movesSoFar:G.moves,atMove:G.moves,atRoll:T.rolls,afterStep:T.nPlayer||0,distAtHint:p?p.length:null,deadend:!p,shown:seq?seq.join(""):"",shownWords:seq?seq.map(x=>DIRW[x]).join(", "):"(undo: dead end)",len:seq?seq.length:0,struggleScore:+score0.toFixed(2),cause,lockMs:0,watchedMs:null,endReason:null,endedAt:null,
   firstActionAfterMs:null,matched:0,followed:null,followEnd:null,...posx()};
- if(T.follow)followEnd(false,"new hint");T.hints.push(info);T.follow={info,seq:seq||[],deadend:!p};G.hint.info=info;rec("hint",{n:info.n,how:info.how,shown:info.shown},false);
+ if(T.follow)followEnd(false,"new hint");T.hints.push(info);T.follow={info,seq:seq||[],deadend:!p};G.hint.info=info;rec("hint",{hint:info.n,how:info.how,shown:info.shown,words:info.shownWords},false);
  if(seq&&V.ok)startGhost(L,G.r,G.c,G.o,seq);
  if(auto&&V.gh&&CFG.adaptiveLockLoops>0){const h=G.hint,ms=Math.round(V.gh.cycle*CFG.adaptiveLockLoops);h.lockUntil=now()+ms;h.lockMs=ms;
   h.unlockTimer=setTimeout(()=>{if(G&&G.hint===h){G.lastAct=now();log("hint_unlocked",{ms});drawBulb();drawPanel()}},ms+30)}
@@ -459,7 +466,7 @@ function giveHint(auto){if(!G||G.done)return;const score0=G.score,cause=dominant
  log("hint",{n:G.hint.info.n,how:G.hint.info.how,auto,cause,shown:seq?seq.join(""):null,len:seq?seq.length:0,dist:p?p.length:null,lockMs:G.hint.lockMs||0,sinceLastActionMs:G.hint.info.sinceLastActionMs,struggleScore:G.hint.info.struggleScore});
  drawBulb();drawPanel()}
 function endHint(reason){if(!G||!G.hint)return;clearTimeout(G.hint.unlockTimer);const ms=now()-G.hint.t0;G.hintMs+=ms;
- const h=G.hint.info;if(h){h.watchedMs=ms;h.endReason=reason;h.endedAt=now()-G.t;rec("hint_end",{n:h.n,reason,ms},false)}log("hint_end",{n:h&&h.n,reason,ms});G.hint=null;stopGhost();drawBulb()}
+ const h=G.hint.info;if(h){h.watchedMs=ms;h.endReason=reason;h.endedAt=now()-G.t;rec("hint_end",{hint:h.n,reason,ms},false)}log("hint_end",{n:h&&h.n,reason,ms});G.hint=null;stopGhost();drawBulb()}
 function hintCaption(){const h=G.hint;if(h.deadend)return`<div class="caption"><b>No way out from here.</b> Undo a few moves and try another way.<div class="dim">Any key or click hides this.</div></div>`;
  let r=G.r,c=G.c,o=G.o,note="";for(const d of h.seq){const m=tryMove(L,r,c,o,d);const cell=L.g[m.r][m.c];
   if(!note&&cell.num)note=`Watch it reach the <b>${cell.num}</b> square with ${cell.num} on the ${L.rule=="top"?"top":"bottom"}.`;
@@ -483,7 +490,7 @@ function finish(skipped){endHint(skipped?"skip":"solved");const T=G.tr;
   bestDist:T.bestDist,finalDist:skipped?(G.lastD==Infinity?null:G.lastD):0,spinUses:T.tiles.spin,flipUses:T.tiles.flip,idleChecks:T.idles,
   medianDecisionMs:med,meanDecisionMs:dts.length?Math.round(dts.reduce((a,b)=>a+b,0)/dts.length):null,maxPauseMs:T.maxPause,hiddenMs:T.hidden,
   firstHintMs:H.length?H[0].t:null,hintsFollowed:H.filter(h=>h.followed).length,hintMovesShown:H.reduce((a,h)=>a+h.len,0),hintMovesFollowed:H.reduce((a,h)=>a+h.matched,0),
-  hintWatchMs:H.reduce((a,h)=>a+(h.watchedMs||0),0),hintDetails:H,actions:T.acts};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
+  hintWatchMs:H.reduce((a,h)=>a+(h.watchedMs||0),0),hintDetails:H,actions:T.acts,path:pathText(T.acts)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
  drawPanel();drawBulb();setTimeout(drawDone,skipped?0:450)}
 function next(){if(G&&G.doneAt)log("next_click",{afterMs:now()-G.doneAt,levelId:L&&L.id});S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else end()}
