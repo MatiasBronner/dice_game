@@ -12,7 +12,7 @@ Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the 
 |---|---|---|
 | `/play/1/` | **Development**: for the research team, not participants | any (chosen on the setup screen) |
 | `/play/2a/`, `/play/2b/` | Control: no help | A, B |
-| `/play/3a/`, `/play/3b/` | Adaptive: the lightbulb lights up when the struggle detector fires; the player clicks it when they want the hint | A, B |
+| `/play/3a/`, `/play/3b/` | Adaptive: when the struggle detector fires, the hint plays automatically and the player watches it twice before moving | A, B |
 | `/play/4a/`, `/play/4b/` | Help always available (lightbulb) | A, B |
 
 The paths are numbered, not named, so participants can't tell which condition they're in.
@@ -91,7 +91,7 @@ Edits are saved in your browser only until you publish, so participants never se
 
 ## Hints and the struggle detector
 
-See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next 3 optimal moves and loops until the player gives any input.
+See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next optimal moves (2 on easy, 3 on medium, 5 on hard levels). In the adaptive condition it plays as soon as the detector fires and the player can't move until it has played twice.
 
 ## Files
 

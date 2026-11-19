@@ -23,8 +23,11 @@ const SET=(window.RDM&&SETS[window.RDM.set])?window.RDM.set:"A";
 const DEV=MODE=="dev";
 
 const CFG={
- hintMoves:3,             // moves the ghost die demonstrates
- adaptiveAutoPlay:false,  // adaptive: false = bulb lights up when the detector fires and waits until the player clicks it; true = hint plays immediately
+ hintMovesEasy:2,         // moves the ghost die demonstrates on easy levels
+ hintMovesMedium:3,       // ...on medium levels (and practice)
+ hintMovesHard:5,         // ...on hard levels
+ adaptiveAutoPlay:true,   // adaptive: true = hint plays as soon as the detector fires; false = bulb lights up and waits for a click
+ adaptiveLockLoops:2,     // adaptive: the player can't move until the ghost has played the hint this many times (0 = no lock)
  skipAfterSecs:300,       // "Skip level" appears after this long on one level
  // --- struggle detector (see DETECTOR.md) ---
  threshold:6,             // struggle score that fires the detector
@@ -277,7 +280,8 @@ function resume(o){const set=SETS[o.set]?o.set:SET;S={pid:o.pid,first:o.first,la
 const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the board)";
 function intro(){const nLev=S.plan.filter(d=>d.phase!="practice").length;
  const help=S.cond=="user"?`<p>Stuck? Click the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner of the board. A ghost die will show you the next few rolls.</p>`
-  :S.cond=="adaptive"?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up. Click it whenever you like and a ghost die will show you the next few rolls.</p>`:"";
+  :S.cond=="adaptive"?(CFG.adaptiveAutoPlay?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${CFG.adaptiveLockLoops==1?"once":CFG.adaptiveLockLoops==2?"twice":CFG.adaptiveLockLoops+" times"}, then it's your turn again.`:""}</p>`
+  :`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up. Click it whenever you like and a ghost die will show you the next few rolls.</p>`):"";
  app.innerHTML=bar()+`<main class="screen"><div class="sheet wide"><div class="introGrid"><div class="showcase" id="sc"></div><div>
  <div class="eyebrow">${M.label}</div><h1 class="bigtitle">Roll it.<br>Read it.<br>Get out.</h1>
  <p>Roll the die one square at a time. A <b style="color:var(--lock)">numbered</b> square can only be entered if the die's <b>top face</b> shows that number after the roll. Reach the <b style="color:var(--exit)">⚑</b> exit.</p>
@@ -305,7 +309,7 @@ function startLevel(){const def=S.plan[S.i];
  log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,hash:L.hash,edited:!!(DEV&&window.RDM_EDITOR&&RDM_EDITOR.edited(L.id)&&S.useEdits),assist:assist()?S.cond:"none"});buildGame();
  clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
 function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
-function act(d){if(!G||G.done||DLG)return;endHint("move");const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
+function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
  if(!m.ok){G.blocked++;const bk=skey(G.r,G.c,G.o)+d,rep=G.blockSeen.has(bk);G.blockSeen.add(bk);
   G.msg=m.why=="wall"?"Blocked: wall or edge.":`Blocked: the ${L.rule} face would show ${m.face}, not ${m.need}.`;
   if(V.ok)aBump(d,G.r,G.c,G.o,m.why=="num"?m.nr+","+m.nc:null);
@@ -318,12 +322,12 @@ function act(d){if(!G||G.done||DLG)return;endHint("move");const m=tryMove(L,G.r,
 /* Restart: die back to the start, move counter back to 0. Undos, blocks, hints and time keep counting
    for the level; moves from earlier attempts are kept in totalMoves. The struggle score is kept, but
    progress tracking restarts from the start square so the next attempt can earn "progress" again. */
-function restart(){if(!G||G.done||DLG)return;endHint("restart");const prev=G.moves;
+function restart(){if(!G||G.done||DLG||hintLocked())return;endHint("restart");const prev=G.moves;
  G.restarts++;G.movesBefore+=G.moves;G.visits.forEach((_,k)=>G.allStates.add(k));
  G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.moves=0;G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
  G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;
  if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesBefore:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
-function undo(){if(!G||G.done||!G.hist.length||DLG)return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
+function undo(){if(!G||G.done||!G.hist.length||DLG||hintLocked())return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
 /* ---- struggle detector v2: productive vs unproductive (see DETECTOR.md) ---- */
 function evalState(kind){const W_=CFG.W,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
  let type,w,stag=false;
@@ -357,18 +361,25 @@ function fire(forced){
  else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}}
 function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forEach(t=>c[t]=(c[t]||0)+1);
  for(const t of["repeat_block","loop","deadend","idle"])if((c[t]||0)>=2)return t;return G.sinceProgress>CFG.stagnationBase?"stagnation":"general"}
-/* ---- hints: ghost die shows the next CFG.hintMoves optimal rolls, looping until any input ---- */
+/* ---- hints: ghost die shows the next optimal rolls (2 easy, 3 medium, 5 hard), looping until any input.
+   An automatic (adaptive) hint locks input until the ghost has played it CFG.adaptiveLockLoops times. ---- */
+function hintLen(){return L.tier=="easy"?CFG.hintMovesEasy:L.tier=="hard"?CFG.hintMovesHard:CFG.hintMovesMedium}
+const hintLocked=()=>!!(G&&G.hint&&G.hint.lockUntil&&now()<G.hint.lockUntil);
 function giveHint(auto){if(!G||G.done)return;G.hints++;if(auto)G.autoHints++;G.offer=false;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;
- const p=bfs(L,G.r,G.c,G.o),seq=p?p.slice(0,CFG.hintMoves):null;
- G.hint={auto,seq,deadend:!p,t0:now()};log("hint",{auto,cause:dominant(),shown:seq?seq.join(""):null,dist:p?p.length:null});
- if(seq&&V.ok)startGhost(L,G.r,G.c,G.o,seq);drawBulb();drawPanel()}
-function endHint(reason){if(!G||!G.hint)return;const ms=now()-G.hint.t0;G.hintMs+=ms;log("hint_end",{reason,ms});G.hint=null;stopGhost();drawBulb()}
+ const p=bfs(L,G.r,G.c,G.o),seq=p?p.slice(0,hintLen()):null;
+ G.hint={auto,seq,deadend:!p,t0:now()};
+ if(seq&&V.ok)startGhost(L,G.r,G.c,G.o,seq);
+ if(auto&&V.gh&&CFG.adaptiveLockLoops>0){const h=G.hint,ms=Math.round(V.gh.cycle*CFG.adaptiveLockLoops);h.lockUntil=now()+ms;h.lockMs=ms;
+  h.unlockTimer=setTimeout(()=>{if(G&&G.hint===h){G.lastAct=now();log("hint_unlocked",{ms});drawBulb();drawPanel()}},ms+30)}
+ log("hint",{auto,cause:dominant(),shown:seq?seq.join(""):null,len:seq?seq.length:0,dist:p?p.length:null,lockMs:G.hint.lockMs||0});
+ drawBulb();drawPanel()}
+function endHint(reason){if(!G||!G.hint)return;clearTimeout(G.hint.unlockTimer);const ms=now()-G.hint.t0;G.hintMs+=ms;log("hint_end",{reason,ms});G.hint=null;stopGhost();drawBulb()}
 function hintCaption(){const h=G.hint;if(h.deadend)return`<div class="caption"><b>No way out from here.</b> Undo a few moves and try another way.<div class="dim">Any key or click hides this.</div></div>`;
  let r=G.r,c=G.c,o=G.o,note="";for(const d of h.seq){const m=tryMove(L,r,c,o,d);const cell=L.g[m.r][m.c];
   if(!note&&cell.num)note=`Watch it reach the <b>${cell.num}</b> square with ${cell.num} on the ${L.rule=="top"?"top":"bottom"}.`;
   if(!note&&cell.tile)note=`Watch what the ${cell.tile=="spin"?"↻":"⇅"} square does to it.`;r=m.r;c=m.c;o=m.o}
  return`<div class="caption"><b>${h.auto?"Here's a hint.":"Hint."}</b> The ghost die shows your next ${h.seq.length==1?"roll":h.seq.length+" rolls"}:
- <div class="seq">${h.seq.map(d=>`<span>${ARROW[d]}</span>`).join("")}</div>${note}<div class="dim">Any key or click hides this.</div></div>`}
+ <div class="seq">${h.seq.map(d=>`<span>${ARROW[d]}</span>`).join("")}</div>${note}<div class="dim">${hintLocked()?`Watch: it plays ${CFG.adaptiveLockLoops==1?"once":CFG.adaptiveLockLoops==2?"twice":CFG.adaptiveLockLoops+" times"} before you can move.`:"Your turn. Any key or click hides this."}</div></div>`}
 function drawBulb(){const el=$("#bulb");if(!el||!G)return;if(!assist()||G.done){el.innerHTML="";el.removeAttribute("data-s");return}
  const ad=S.cond=="adaptive",s=G.hint?"lit":G.offer?"offer":ad?"watch":"ready";el.dataset.s=s;
  const lbl=G.hint?"":ad?(G.offer?"Hint ready: click when you want it":"Assistant watching"):"Hint";
@@ -389,7 +400,7 @@ function buildGame(){
   <div class="legend"><span><i class="sw" style="background:var(--lock)">4</i>Number lock</span><span><i class="sw" style="background:var(--spin)">↻</i>?</span><span><i class="sw" style="background:var(--flip)">⇅</i>?</span><span><i class="sw" style="background:var(--exit);color:#0b3324">⚑</i>Exit</span></div>
  </section><aside class="panel" id="panel"></aside></main>`;
  const st=$("#stage");mount(st);if(V.ok){buildBoard(L);placeMesh(V.die,G.r,G.c,G.o)}
- let sx=null,sy=null;st.onpointerdown=e=>{if(e.target.closest(".bulb,.doneOv,.hud"))return;if(G&&G.hint)endHint("click");sx=e.clientX;sy=e.clientY};
+ let sx=null,sy=null;st.onpointerdown=e=>{if(e.target.closest(".bulb,.doneOv,.hud"))return;if(hintLocked())return;if(G&&G.hint)endHint("click");sx=e.clientX;sy=e.clientY};
  st.onpointerup=e=>{if(sx==null)return;const dx=e.clientX-sx,dy=e.clientY-sy;sx=null;if(Math.max(Math.abs(dx),Math.abs(dy))<28)return;act(Math.abs(dx)>Math.abs(dy)?(dx>0?"E":"W"):(dy>0?"S":"N"))};
  drawPanel();drawBulb()}
 function levelLabel(){const same=S.plan.filter(x=>x.phase==L.phase),idx=same.findIndex(x=>x.id==L.id)+1;
@@ -408,6 +419,7 @@ function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const dn=G.done,ll=l
  <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button><button id="rst" ${dn?"disabled":""} title="Start this level again from the beginning">⟲ Restart</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
  <div class="msg ${G.msgInfo?"info":""}" role="status">${G.msg}</div>`;
  pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
+ if(hintLocked())pn.querySelectorAll(".pad button,.acts button").forEach(b=>b.disabled=true);
  $("#un").onclick=undo;$("#rst").onclick=restart;if(DEV)drawHud();
  if($("#sk"))$("#sk").onclick=async()=>{if(await ask("Skip this level?","It will be recorded as unsolved.","Skip level"))finish(true)}}
 function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$("#doneOv"))return;const isPrac=L.phase=="practice",eff=G.skipped?0:Math.min(1,L.opt/G.moves),C=2*Math.PI*52;
@@ -419,6 +431,7 @@ function drawDone(){const st=$("#stage");if(!st||!G||!G.done||$("#doneOv"))retur
  st.appendChild(el);$("#nx").onclick=next;$("#nx").focus()}
 document.addEventListener("keydown",e=>{if(DLG||!G||!L||Q||!$("#stage"))return;
  if(G.done){if(e.key=="Enter"&&$("#nx")){e.preventDefault();$("#nx").click()}return}
+ if(hintLocked()){if(KEY[e.key]||e.key=="z"||e.key=="Z"||e.key=="Backspace")e.preventDefault();return}
  if(G.hint&&!["Shift","Control","Alt","Meta","Tab"].includes(e.key))endHint("key");
  if(e.target&&e.target.tagName=="BUTTON"&&(e.key=="Enter"||e.key==" "))return;
  const d=KEY[e.key];if(d){e.preventDefault();act(d)}else if(e.key=="z"||e.key=="Z"||e.key=="Backspace"){e.preventDefault();undo()}});
@@ -439,7 +452,7 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
 const DEVK="rdm3_dev_prefs";let devTimer=null;
 function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
-const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
+const CFG_HELP={hintMovesEasy:"moves the ghost shows on easy levels",hintMovesMedium:"…on medium levels",hintMovesHard:"…on hard levels",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",adaptiveLockLoops:"adaptive: no moves until the hint has played N times (0 = off)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
 function devStop(){clearInterval(devTimer);clearInterval(idleTimer);if(S&&!S.finished)flush();if(G)endHint("dev_leave");S=null;L=null;G=null;Q=null;V.host=null;stopGhost()}
 function useLevels(on){if(window.RDM_EDITOR)LV=on?RDM_EDITOR.merged():RDM_EDITOR.original()}
 function devPlaytest(id){const pr=devPrefs();const cond=MODES[pr.cond]&&MODES[pr.cond].session==1?pr.cond:"control";useLevels(true);
