@@ -1,5 +1,5 @@
 /* Rolling Die Maze v3 — shared game script. Each study URL (play/1..4/index.html) sets
-   window.RDM = {mode: "dev" | "control" | "adaptive" | "help"} and loads levels.js + this file. */
+   window.RDM = {mode: "dev" | "control" | "adaptive" | "help", set: "A" | "B"} and loads levels.js + this file. */
 
 /* ======================= CONFIG ======================= */
 // Supabase: project URL and publishable/anon key (public by design; tables are write-only, see supabase/schema.sql).
@@ -8,10 +8,18 @@ const SUPABASE_ANON_KEY="sb_publishable_rWa5xKlL8iRVmuFsF6Uavg_n3aLq4w_";
 
 const MODES={
  dev:     {session:1,group:"dev",     cond:"none",    label:"Development"},
- control: {session:1,group:"none",    cond:"none",    label:"Training session"},
- adaptive:{session:1,group:"adaptive",cond:"adaptive",label:"Training session"},
- help:    {session:1,group:"user",    cond:"user",    label:"Training session"}};
+ control: {session:1,group:"none",    cond:"none",    label:"Rolling Die Maze"},
+ adaptive:{session:1,group:"adaptive",cond:"adaptive",label:"Rolling Die Maze"},
+ help:    {session:1,group:"user",    cond:"user",    label:"Rolling Die Maze"}};
 const MODE=(window.RDM&&MODES[window.RDM.mode])?window.RDM.mode:"control";let M=MODES[MODE];
+/* Level sets: the 30 training levels split into two sets of 15 (5 easy, 5 medium, 5 hard), matched on
+   best-solution length and lock detour, each with a level that needs ↻ (easy) and one that needs ⇅ (medium).
+   Each study link plays one set; give half of your participants A first and the other half B first.
+   Levels are played in ID order, so difficulty still ramps up. A level deleted in the editor is simply left out. */
+const SETS={
+ A:["T01","T02","T04","T09","T10","T11","T12","T16","T17","T18","T21","T23","T25","T28","T29"],
+ B:["T03","T05","T06","T07","T08","T13","T14","T15","T19","T20","T22","T24","T26","T27","T30"]};
+const SET=(window.RDM&&SETS[window.RDM.set])?window.RDM.set:"A";
 const DEV=MODE=="dev";
 
 const CFG={
@@ -54,7 +62,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let LV=window.RDM_LEVELS;
 // short fingerprint of a level's layout, logged with every level so analysis can tell edited versions apart
 function levelHash(d){const t=JSON.stringify([d.n,d.rule,d.start,d.exit,d.rows]);let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(16).padStart(8,"0")}
-function planFor(m){return m.session==1?[...LV.practice,...LV.training,...LV.immediate]:[...LV.delayed]}
+// A session is the practice level, then the set's 15 levels. No end-of-session test levels or quiz.
+function planFor(set){return[...LV.practice,...LV.training.filter(d=>SETS[set].includes(d.id))]}
 function loadLevel(def){const g=def.rows.map(r=>[...r].map(ch=>({w:ch=="#",num:/[1-6]/.test(ch)?+ch:0,tile:ch=="S"?"spin":ch=="F"?"flip":null})));
  return{hash:levelHash(def),id:def.id,phase:def.phase,tier:def.tier,n:def.n,g,start:def.start,exit:def.exit,rule:def.rule,kind:def.tier,opt:def.opt}}
 
@@ -207,12 +216,12 @@ const SB={on:!!(SUPABASE_URL&&SUPABASE_ANON_KEY),status:"saved"},STL={saved:"Sav
 function setStatus(s){SB.status=s;const el=$("#cloud");if(el){el.dataset.s=s;el.lastChild.textContent=STL[s]}}
 const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${SB.on?SB.status:"off"}"><i></i>${STL[SB.on?SB.status:"off"]}</span>`;
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
-const ACTIVE="rdm3_active_"+MODE;
-function exportObj(s=S){return{key:s.key,pid:s.pid,first:s.first,last:s.last,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,started:s.started,finished:s.finished||null,t0:s.t0,i:s.i,seen:s.seen,
+const ACTIVE="rdm3_active_"+MODE+"_"+SET;
+function exportObj(s=S){return{key:s.key,pid:s.pid,first:s.first,last:s.last,mode:s.mode,set:s.set,session:s.session,group:s.group,assistance:s.cond,started:s.started,finished:s.finished||null,t0:s.t0,i:s.i,seen:s.seen,
  sbTo:s.sbTo||0,screen:s.screen,tz:s.tz,levels:s.res,quiz:s.quiz,events:s.log}}
 function save(){if(S)LS.set("rdm3_"+S.key,JSON.stringify(exportObj()))}
-function sessionDoc(s){return{key:s.key,pid:s.pid,firstName:s.first||null,lastName:s.last||null,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:"v3",started:s.started,finished:s.finished||null,
- status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.filter(q=>q.ok).length,
+function sessionDoc(s){return{key:s.key,pid:s.pid,firstName:s.first||null,lastName:s.last||null,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,
+ status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.length?s.quiz.filter(q=>q.ok).length:null,
  eventCount:s.log.length,skipAfter:CFG.skipAfterSecs,ua:navigator.userAgent,screen:s.screen,timezone:s.tz}}
 async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:txt.length<60000,
  headers:Object.assign({apikey:SUPABASE_ANON_KEY,"Content-Type":"application/json"},SUPABASE_ANON_KEY.startsWith("sb_")?{}:{Authorization:"Bearer "+SUPABASE_ANON_KEY}),body:txt});
@@ -245,7 +254,7 @@ function resumable(){const k=LS.get(ACTIVE);if(!k)return null;try{const o=JSON.p
 function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=null;const r=resumable();
  app.innerHTML=bar()+`<main class="screen"><div class="sheet" style="max-width:520px"><div class="eyebrow">${M.label}</div><h1 style="font-size:34px;margin:6px 0 6px">Welcome</h1>
  <p class="mu" style="margin-top:0">Please enter your name to sign in.</p>
- ${r?`<div class="note warn">You were partway through (level ${Math.min(r.i+1,planFor(M).length)} of ${planFor(M).length}) as <b>${esc(((r.first||"")+" "+(r.last||"")).trim()||r.pid)}</b>.<div class="row" style="margin-top:10px"><button class="btn-p" id="res">Continue where I left off</button></div></div>`:""}
+ ${r?`<div class="note warn">You were partway through (level ${Math.min(r.i+1,planFor(SET).length)} of ${planFor(SET).length}) as <b>${esc(((r.first||"")+" "+(r.last||"")).trim()||r.pid)}</b>.<div class="row" style="margin-top:10px"><button class="btn-p" id="res">Continue where I left off</button></div></div>`:""}
  <form id="f" novalidate><div class="grid2"><div><label for="fn">First name</label><input id="fn" autocomplete="given-name" required></div>
  <div><label for="ln">Last name</label><input id="ln" autocomplete="family-name" required></div></div>
  <div class="err" id="er" role="alert"></div><p class="mu" style="font-size:14px">Use the same name each time you take part, so your sessions are linked.</p>
@@ -254,19 +263,19 @@ function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=n
  $("#f").onsubmit=e=>{e.preventDefault();const f=cleanName($("#fn").value),l=cleanName($("#ln").value);
   if(!f||!l){$("#er").textContent=!f&&!l?"Please enter your first and last name.":!f?"Please enter your first name.":"Please enter your last name.";(!f?$("#fn"):$("#ln")).focus();return}begin(f,l)};
  if(!r)$("#fn").focus()}
-function newS(first,last){const st=new Date().toISOString(),pid=nameId(first,last);
- return{pid,first,last,mode:MODE,session:M.session,group:M.group,cond:M.cond,i:0,res:[],log:[],quiz:[],t0:now(),started:st,seen:{},sbTo:0,
-  key:`rdm3_${safeId(pid)}_${MODE}_${st.replace(/[:.]/g,"-")}`,plan:planFor(M),
+function newS(first,last,set=SET){const st=new Date().toISOString(),pid=nameId(first,last);
+ return{pid,first,last,mode:MODE,set,session:M.session,group:M.group,cond:M.cond,i:0,res:[],log:[],quiz:[],t0:now(),started:st,seen:{},sbTo:0,
+  key:`rdm3_${safeId(pid)}_${MODE}${set}_${st.replace(/[:.]/g,"-")}`,plan:planFor(set),
   screen:`${screen.width}x${screen.height} @${devicePixelRatio||1}x, window ${innerWidth}x${innerHeight}`,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||"")}}
 function begin(first,last){S=newS(first,last);LS.set(ACTIVE,S.key);const pid=S.pid;
- log("session_start",{pid,firstName:first,lastName:last,mode:MODE,session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
-function resume(o){S={pid:o.pid,first:o.first,last:o.last,mode:MODE,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
- sbTo:o.sbTo||0,key:o.key,plan:planFor(M),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
- if(S.i>=S.plan.length)quizStart();else startLevel()}
+ log("session_start",{pid,firstName:first,lastName:last,mode:MODE,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
+function resume(o){const set=SETS[o.set]?o.set:SET;S={pid:o.pid,first:o.first,last:o.last,mode:MODE,set,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
+ sbTo:o.sbTo||0,key:o.key,plan:planFor(set),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
+ if(S.i>=S.plan.length)end();else startLevel()}
 
 /* ======================= TEXT SCREENS ======================= */
 const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the board)";
-function intro(){const s1=M.session==1,nTrain=LV.training.length,nAss=LV.immediate.length;
+function intro(){const nLev=S.plan.filter(d=>d.phase!="practice").length;
  const help=S.cond=="user"?`<p>Stuck? Click the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner of the board. A ghost die will show you the next few rolls.</p>`
   :S.cond=="adaptive"?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up. Click it whenever you like and a ghost die will show you the next few rolls.</p>`:"";
  app.innerHTML=bar()+`<main class="screen"><div class="sheet wide"><div class="introGrid"><div class="showcase" id="sc"></div><div>
@@ -274,7 +283,7 @@ function intro(){const s1=M.session==1,nTrain=LV.training.length,nAss=LV.immedia
  <p>Roll the die one square at a time. A <b style="color:var(--lock)">numbered</b> square can only be entered if the die's <b>top face</b> shows that number after the roll. Reach the <b style="color:var(--exit)">⚑</b> exit.</p>
  <p>Some squares have special markings. Nobody will tell you what they do. You'll have to find out.</p>${help}
  <div class="keys"><span><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to roll</span><span><kbd>Z</kbd> to undo</span><span>Swipe on touch screens</span></div>
- <p class="mu">Try to finish each level in as few moves as you can. ${s1?`You'll start with a practice level, then ${nTrain} levels that get harder as you go, then ${nAss} levels on your own and a short quiz.`:`You'll play ${S.plan.length} levels on your own, then a short quiz. No help is available in this session.`}</p>
+ <p class="mu">Try to finish each level in as few moves as you can. You'll start with a short practice level, then play ${nLev} levels that get harder as you go.</p>
  <button class="btn-p" id="b">Begin</button></div></div></div></main>`;
  showcase($("#sc"));$("#b").onclick=startLevel;$("#b").focus()}
 function interstitial(kind){S.seen[kind]=true;log(kind=="bottom"?"rule_change_shown":"assessment_intro_shown");
@@ -371,7 +380,7 @@ function finish(skipped){endHint(skipped?"skip":"solved");G.done=true;G.skipped=
   restarts:G.restarts,totalMoves:G.movesBefore+G.moves,uniqueStates:new Set([...G.allStates,...G.visits.keys()]).size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
  drawPanel();drawBulb();setTimeout(drawDone,skipped?0:450)}
-function next(){S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else quizStart()}
+function next(){S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else end()}
 
 /* ---------- game screen ---------- */
 function buildGame(){
@@ -414,28 +423,8 @@ document.addEventListener("keydown",e=>{if(DLG||!G||!L||Q||!$("#stage"))return;
  if(e.target&&e.target.tagName=="BUTTON"&&(e.key=="Enter"||e.key==" "))return;
  const d=KEY[e.key];if(d){e.preventDefault();act(d)}else if(e.key=="z"||e.key=="Z"||e.key=="Backspace"){e.preventDefault();undo()}});
 
-/* ======================= QUIZ ======================= */
-function quizStart(){const R=rng(13+S.session*1000);const pick=a=>a[Math.floor(R()*a.length)];
- const randO=()=>{let o=O0.slice();for(let k=0;k<25;k++){const r=R();o=r<.8?roll(o,pick("NSEW")):tileFx(o,"spin")}return o};
- const qs=[];
- for(let i=0;i<3;i++){const o=randO(),ds=[...Array(2+i)].map(()=>pick("NSEW"));let c=o;ds.forEach(d=>c=roll(c,d));qs.push({type:"top",o,ds,ask:"top",a:c[0]})}
- {const o=randO(),ds=[pick("NSEW"),pick("NSEW")];let c=o;ds.forEach(d=>c=roll(c,d));qs.push({type:"bottom",o,ds,ask:"bottom",a:7-c[0]})}
- {const o=randO(),d=pick("NSEW");const c=tileFx(roll(o,d),"spin");qs.push({type:"spin",o,ds:[d],tile:"spin",ask:"right",a:c[2]})}
- {const o=randO(),d=pick("NSEW");const c=tileFx(roll(o,d),"flip");qs.push({type:"flip",o,ds:[d],tile:"flip",ask:"top",a:c[0]})}
- S.quiz=[];Q={i:0,qs};L=null;G=null;V.host=null;clearInterval(idleTimer);log("quiz_start");qNext()}
-function qNext(){if(Q.i>=Q.qs.length)return end();const q=Q.qs[Q.i];
- const askTxt=q.ask=="top"?"on <b>top</b>":q.ask=="bottom"?"on the <b>bottom</b> (touching the board)":"facing <b>right</b>";
- const seq=q.ds.map(d=>DIRNAME[d]+" "+ARROW[d]).join(", then ");
- app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">Quick check</div><h1 style="font-size:28px;margin:4px 0 10px">Question ${Q.i+1} of ${Q.qs.length}</h1>
- <div class="qprog">${Q.qs.map((_,i)=>`<i class="${i<=Q.i?"on":""}"></i>`).join("")}</div>
- <p class="mu" style="margin-top:0">Work it out in your head.</p>
- <div class="row" style="gap:20px;align-items:center"><div class="qdie">${dieSVG(q.o)}</div>
- <p style="flex:1;min-width:220px;margin:0">The die shows <b>${q.o[0]}</b> on top, <b>${7-q.o[1]}</b> on the front and <b>${q.o[2]}</b> on the right.<br>It rolls <b>${seq}</b>${q.tile?`, landing on a <b style="color:var(--${q.tile})">${q.tile=="spin"?"↻":"⇅"}</b> square`:""}.<br>What number is now ${askTxt}?</p></div>
- <div class="nums">${[1,2,3,4,5,6].map(n=>`<button data-n="${n}">${n}</button>`).join("")}</div><p class="mu" style="margin-top:14px;font-size:14px">"Up" means away from you, toward the back of the board.</p></div></main>`;
- const shown=now();app.querySelectorAll("[data-n]").forEach(b=>b.onclick=()=>{const ok=+b.dataset.n==q.a;S.quiz.push({q:Q.i+1,type:q.type,answer:+b.dataset.n,correct:q.a,ok,secs:+((now()-shown)/1000).toFixed(1)});log("quiz",{q:Q.i+1,qtype:q.type,ans:+b.dataset.n,ok});Q.i++;qNext()})}
-
 /* ======================= END ======================= */
-async function end(){S.finished=new Date().toISOString();log("session_end");Q=null;const s=S;
+async function end(){S.finished=new Date().toISOString();log("session_end");Q=null;L=null;G=null;V.host=null;clearInterval(idleTimer);const s=S;
  app.innerHTML=bar()+`<main class="screen"><div class="sheet"><div class="eyebrow">Session complete</div><h1 class="bigtitle" style="font-size:44px">All done. Thank you!</h1>
  <p>You've finished this session.</p><div id="sync" class="note">Saving your results… please keep this page open.</div></div></main>`;
  let ok=!SB.on;for(let i=0;i<4&&!ok;i++){ok=await sbSync(s);if(!ok)await sleep(2500)}
@@ -454,8 +443,8 @@ const CFG_HELP={hintMoves:"moves the ghost shows",adaptiveAutoPlay:"adaptive: pl
 function devStop(){clearInterval(devTimer);clearInterval(idleTimer);if(S&&!S.finished)flush();if(G)endHint("dev_leave");S=null;L=null;G=null;Q=null;V.host=null;stopGhost()}
 function useLevels(on){if(window.RDM_EDITOR)LV=on?RDM_EDITOR.merged():RDM_EDITOR.original()}
 function devPlaytest(id){const pr=devPrefs();const cond=MODES[pr.cond]&&MODES[pr.cond].session==1?pr.cond:"control";useLevels(true);
- const i=planFor(MODES[cond]).findIndex(d=>d.id==id);
- devStart({...pr,cond,start:Math.max(0,i),intro:false,hud:true,useEdits:true,first:pr.first||"Dev",last:pr.last||"Tester",save:pr.save!==false})}
+ const set=SETS.B.includes(id)?"B":"A",i=planFor(set).findIndex(d=>d.id==id);
+ devStart({...pr,cond,set,start:Math.max(0,i),intro:false,hud:true,useEdits:true,first:pr.first||"Dev",last:pr.last||"Tester",save:pr.save!==false})}
 function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.useEdits!==false);
  const nEd=window.RDM_EDITOR?RDM_EDITOR.count():0;
  const conds=[["control","Control (no help)"],["adaptive","Adaptive help"],["help","Help always available"]];
@@ -465,12 +454,13 @@ function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.
  <p class="mu">Sessions from this link are saved with <code>mode = 'dev'</code> and <code>grp = 'dev'</code>, so filter them out of the study data with <code>where mode &lt;&gt; 'dev'</code>. Settings changed here apply only in this browser. To make them the study defaults, copy them into <code>CFG</code> in app.js.</p>
  <div class="grid2"><div>
   <label for="dc">Condition</label><select id="dc">${conds.map(([k,t])=>`<option value="${k}" ${pr.cond==k?"selected":""}>${t}</option>`).join("")}</select>
+  <label for="ds2">Level set</label><select id="ds2">${["A","B"].map(k=>`<option value="${k}" ${(pr.set||"A")==k?"selected":""}>Set ${k} (${SETS[k].length} levels)</option>`).join("")}</select>
   <label for="dl">Start at</label><select id="dl"></select>
   <div class="grid2" style="gap:0 12px"><div><label for="dfn">First name</label><input id="dfn" value="${esc(pr.first||"Dev")}"></div><div><label for="dln">Last name</label><input id="dln" value="${esc(pr.last||"Tester")}"></div></div>
  </div><div>
   <label class="tog"><input type="checkbox" id="dh" ${pr.hud!==false?"checked":""}> Show detector panel on the board</label>
   <label class="tog"><input type="checkbox" id="ds" ${pr.save!==false?"checked":""}> Save to Supabase</label>
-  <label class="tog"><input type="checkbox" id="di" ${pr.intro?"checked":""}> Show intro and rule-change screens</label>
+  <label class="tog"><input type="checkbox" id="di" ${pr.intro?"checked":""}> Show intro screen</label>
   ${window.RDM_EDITOR?`<label class="tog"><input type="checkbox" id="due" ${pr.useEdits!==false?"checked":""}> Play my edited levels <span class="mu">(${nEd} edited in this browser)</span></label>`:""}
  </div></div>
  ${window.RDM_EDITOR?`<div class="note" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span><b>Level editor:</b> change any level, see the solver's analysis live, play-test it, then publish.</span><button id="ged">Open level editor</button></div>`:""}
@@ -481,29 +471,29 @@ function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.
  <div class="row" style="margin-top:20px"><button class="btn-p" id="go">Start</button><button id="rs">Reset settings to defaults</button><button id="cp">Copy settings as code</button></div>
  <textarea id="code" readonly style="display:none;margin-top:12px"></textarea></div></main>`;
  if(!MODES[pr.cond]||MODES[pr.cond].session!=1)pr.cond="control";
- const fillLevels=()=>{const m=MODES[$("#dc").value],pl=planFor(m);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${pr.cond==$("#dc").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
- fillLevels();$("#dc").onchange=fillLevels;
+ const fillLevels=()=>{const pl=planFor($("#ds2").value);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${(pr.set||"A")==$("#ds2").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
+ fillLevels();$("#ds2").onchange=fillLevels;
  const read=()=>{const c={W:{}};for(const k in CFG_DEFAULT){if(k=="W")continue;const el=$("#c_"+k);c[k]=typeof CFG_DEFAULT[k]=="boolean"?el.value=="true":+el.value}for(const k in CFG_DEFAULT.W)c.W[k]=+$("#w_"+k).value;return c};
- const store=()=>{const c=read();applyCfg(c);const p={useEdits:$("#due")?$("#due").checked:true,cond:$("#dc").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
+ const store=()=>{const c=read();applyCfg(c);const p={useEdits:$("#due")?$("#due").checked:true,cond:$("#dc").value,set:$("#ds2").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
  $("#rs").onclick=()=>{const p=devPrefs();delete p.cfg;LS.set(DEVK,JSON.stringify(p));for(const k in CFG_DEFAULT)CFG[k]=k=="W"?{...CFG_DEFAULT.W}:CFG_DEFAULT[k];devSetup()};
  $("#cp").onclick=async()=>{store();const t="const CFG="+JSON.stringify(CFG,null,1).replace(/\n\s*/g," ")+";";const ta=$("#code");ta.style.display="block";ta.value=t;ta.select();try{await navigator.clipboard.writeText(t);$("#cp").textContent="Copied"}catch(e){$("#cp").textContent="Select and copy below"}};
  $("#go").onclick=()=>{const p=store();devStart(p)};
  if($("#due"))$("#due").onchange=()=>{useLevels($("#due").checked);fillLevels()};
  if($("#ged"))$("#ged").onclick=()=>{store();RDM_EDITOR.open()}}
 function devStart(p){useLevels(p.useEdits!==false);M={...MODES[p.cond],label:"Development · "+p.cond};
- SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last);S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;S.useEdits=p.useEdits!==false;
+ SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last,SETS[p.set]?p.set:"A");S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;S.useEdits=p.useEdits!==false;
  if(!p.intro)S.seen={immediate:true,bottom:true};
- log("session_start",{pid:S.pid,firstName:S.first,lastName:S.last,mode:"dev",devCondition:p.cond,session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
+ log("session_start",{pid:S.pid,firstName:S.first,lastName:S.last,mode:"dev",devCondition:p.cond,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
  clearInterval(devTimer);devTimer=setInterval(()=>{if(G&&!G.done)drawHud()},1000);
  if(p.intro&&p.start==0)intro();else startLevel()}
 function devGo(i){if(!S)return;if(G)endHint("dev_jump");i=Math.max(0,Math.min(S.plan.length-1,i));log("dev_jump",{from:S.i,to:i});S.i=i;G=null;startLevel()}
 function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.style.display="none";return}
  if(!el.dataset.built){el.dataset.built=1;el.innerHTML=`<button class="hudMin" id="hudMin" aria-label="Collapse detector panel">–</button><div id="hudS"></div><div class="hudb"><button data-h="hint">Hint now</button><button data-h="fire">Fire detector</button><button data-h="solve">Solve</button><button data-h="restart">Restart</button>
-  <button data-h="prev">◀ Prev</button><button data-h="next">Next ▶</button><button data-h="quiz">Quiz</button><button data-h="setup">Setup</button>${window.RDM_EDITOR?`<button data-h="edit" class="hudWide">✎ Edit this level</button>`:""}</div>`;
+  <button data-h="prev">◀ Prev</button><button data-h="next">Next ▶</button><button data-h="setup">Setup</button>${window.RDM_EDITOR?`<button data-h="edit" class="hudWide">✎ Edit this level</button>`:""}</div>`;
   $("#hudMin").onclick=e=>{e.stopPropagation();S.hudMin=!S.hudMin;el.classList.toggle("min",S.hudMin);$("#hudMin").textContent=S.hudMin?"+":"–"};if(S.hudMin){el.classList.add("min");$("#hudMin").textContent="+"}
   el.querySelectorAll("[data-h]").forEach(b=>b.onclick=e=>{e.stopPropagation();if(!G||!S)return;const h=b.dataset.h;
    if(h=="hint"){if(!G.done)giveHint(false)}else if(h=="fire"){if(!G.done)fire(true)}else if(h=="solve"){if(!G.done){endHint("dev");(bfs(L,G.r,G.c,G.o)||[]).forEach(d=>act(d))}}
-   else if(h=="restart")devGo(S.i);else if(h=="prev")devGo(S.i-1);else if(h=="next")devGo(S.i+1);else if(h=="quiz"){endHint("dev");G=null;quizStart()}
+   else if(h=="restart")devGo(S.i);else if(h=="prev")devGo(S.i-1);else if(h=="next")devGo(S.i+1);
    else if(h=="setup"){flush();devSetup()}else if(h=="edit"){RDM_EDITOR.open(L.id)}})}
  const d=G.lastD,budget=Math.max(CFG.stagnationBase,Math.ceil(CFG.stagnationFactor*(d==Infinity||d==null?G.best:d))),g=gate(),pct=Math.min(100,G.score/CFG.threshold*100);
  const last=G.recent[G.recent.length-1]||"–",live=assist()&&S.cond=="adaptive";

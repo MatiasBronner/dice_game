@@ -8,14 +8,16 @@ A 3D puzzle game for a study on AI assistance and skill acquisition. Players rol
 
 Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the links)
 
-| Link | Path | Condition |
+| Path | Condition | Level set |
 |---|---|---|
-| 1 | `/play/1/` | **Development**: for the research team, not participants |
-| 2 | `/play/2/` | Control: no help |
-| 3 | `/play/3/` | Adaptive: the lightbulb lights up when the struggle detector fires; the player clicks it when they want the hint |
-| 4 | `/play/4/` | Help always available (lightbulb) |
+| `/play/1/` | **Development**: for the research team, not participants | any (chosen on the setup screen) |
+| `/play/2a/`, `/play/2b/` | Control: no help | A, B |
+| `/play/3a/`, `/play/3b/` | Adaptive: the lightbulb lights up when the struggle detector fires; the player clicks it when they want the hint | A, B |
+| `/play/4a/`, `/play/4b/` | Help always available (lightbulb) | A, B |
 
 The paths are numbered, not named, so participants can't tell which condition they're in.
+
+**Each participant plays twice**, once with each set, in the same condition both times. Counterbalance the order: in each condition, send half the participants the A link first and the B link second, and the other half B then A. The set is saved as `sessions.level_set`; the order of a person's sessions comes from `started_at`.
 
 ### Sign-in and repeat testing
 
@@ -33,16 +35,22 @@ If a participant reloads or closes the tab, they're offered **Continue where I l
 
 ## Session structure
 
-Every session (links 2–4): practice → **30 training levels** (assistance per condition) → **6 test levels** on their own → 6-question rule quiz.
+Every session: one practice level → the set's **15 levels** (5 easy, 5 medium, 5 hard), with the condition's assistance. There's no quiz and no end-of-session test levels.
+
+The 30 levels T01–T30 are split into two sets in `SETS` at the top of `app.js`:
+
+| Set | Easy | Medium | Hard | Sum of best solutions |
+|---|---|---|---|---|
+| A | T01 T02 T04 T09 T10 | T11 T12 T16 T17 T18 | T21 T23 T25 T28 T29 | 171 |
+| B | T03 T05 T06 T07 T08 | T13 T14 T15 T19 T20 | T22 T24 T26 T27 T30 | 176 |
+
+The split was chosen to match the sets as closely as possible on best-solution length and lock detour in each tier. Each set also has an easy level that needs ↻ (A: T09, T10; B: T08) and a medium level that needs ⇅ (A: T18; B: T13), so every player meets both squares early. Levels are played in ID order, so difficulty ramps up within a session. The I1–I6 and D1–D6 levels in `levels.js` are no longer used.
 
 | Levels | Tier | Board | Optimal moves | Notes |
 |---|---|---|---|---|
 | T01–T10 | easy | 5×5 | 4–7 | ↻ first appears at T08 |
 | T11–T20 | medium | 6×6 | 9–13 | ⇅ first appears at T13 |
-| T21–T30 | hard | 6×6 / 7×7 | 13–20 | Both tiles from T25 |
-| I1–I6 | retention ×2, near ×2, far ×2 | 6×6 / 7×7 | 10–17 | Played on their own after training |
-
-*Far transfer* levels switch to the bottom-face rule, with a rule-change screen first.
+| T21–T30 | hard | 6×6 / 7×7 | 13–20 (T24: 27) | Both tiles from T25 |
 
 Levels are generated and verified by `tools/gen_levels.py`, which writes `levels.js`. Every level is solved exactly, and every ↻/⇅ square is necessary (removing it makes the level longer or unsolvable). See the script for the difficulty targets. To change the levels, edit the plan in the script and run `python3 tools/gen_levels.py`.
 
@@ -90,7 +98,8 @@ See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle 
 | File | What it is |
 |---|---|
 | `index.html` | Experimenter page with the four links |
-| `play/1..4/index.html` | Study pages; each sets the condition and loads the shared files |
+| `play/1/index.html` | Development link |
+| `play/2a..4b/index.html` | Study pages; each sets the condition and level set and loads the shared files |
 | `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
 | `levels.js` | The levels, one per line (generated, then hand-edited with the level editor) |
 | `editor.js` | Level editor (loaded on the development link only) |
@@ -108,21 +117,23 @@ The publishable key is designed to be public. All tables have row-level security
 | Table | One row per |
 |---|---|
 | `participants` | person (`pid`, `first_name`, `last_name`, group) |
-| `sessions` | time someone played (`pid`, name, `mode` = link, group, assistance, start/finish, status, quiz score, device) |
+| `sessions` | time someone played (`pid`, name, `mode` = condition, `level_set` = A or B, group, assistance, start/finish, status, device) |
 | `level_results` | level played (`level_id`, `phase`, `tier`, moves, optimal, efficiency, undos, blocks, hints, `hint_ms`, detector fires, time) |
-| `quiz_answers` | quiz question |
-| `events` | logged action: moves, blocks, undos, tiles, hints and how long they were watched, detector fires, idle, quiz. The full event is in `data` (jsonb) |
+| `quiz_answers` | quiz question (no longer used) |
+| `events` | logged action: moves, blocks, undos, tiles, hints and how long they were watched, detector fires, idle. The full event is in `data` (jsonb) |
 
-Example: performance on the test levels by condition, and each person's sessions in order.
+Example: performance by condition, first or second session, and tier; and each person's sessions in order.
 
 ```sql
-select p.grp, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
+with s as (select *, row_number() over (partition by pid order by started_at) as visit
+           from sessions where mode <> 'dev' and status = 'complete')
+select s.mode, s.visit, l.tier, round(avg(l.efficiency), 3) eff, round(avg(l.secs)) secs,
        avg(l.solved::int) solved, count(*)
-from level_results l join sessions s using (session_key) join participants p on p.pid = s.pid
-where l.phase = 'immediate' and s.mode <> 'dev'
-group by 1, 2 order by 1, 2;
+from level_results l join s using (session_key)
+where l.phase = 'training'
+group by 1, 2, 3 order by 1, 2, 3;
 
-select pid, first_name, last_name, mode, started_at, status, quiz_score,
+select pid, first_name, last_name, mode, level_set, started_at, status,
        row_number() over (partition by pid order by started_at) as visit
 from sessions where mode <> 'dev' order by pid, started_at;
 ```

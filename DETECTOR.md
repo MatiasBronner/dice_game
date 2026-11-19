@@ -51,7 +51,7 @@ A **ghost die** demonstrates the next 3 moves of an optimal solution from the pl
 
 - **Help-always (link 4):** the lightbulb is always available; clicking it starts the ghost.
 - **Adaptive (link 3):** the bulb is dim ("Assistant watching"). When the detector fires, it lights up and pulses ("Hint ready: click when you want it"), and the hint **waits for the player**. They can keep playing and click it whenever they choose, as long as they're still on that level. While a hint is waiting, the detector doesn't fire again. Once used, the bulb goes back to watching until the next fire. To play the hint the moment the detector fires instead, set `CFG.adaptiveAutoPlay = true`.
-- Hints only exist in the 30 training levels. Practice and the 6 test levels at the end never show them.
+- Hints only exist in the 15 levels of each set. The practice level never shows them.
 
 ## Tuning
 
