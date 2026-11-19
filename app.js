@@ -11,7 +11,11 @@ const MODES={
  control: {session:1,group:"none",    cond:"none",    label:"Rolling Die Maze"},
  adaptive:{session:1,group:"adaptive",cond:"adaptive",label:"Rolling Die Maze"},
  help:    {session:1,group:"user",    cond:"user",    label:"Rolling Die Maze"}};
-const MODE=(window.RDM&&MODES[window.RDM.mode])?window.RDM.mode:"control";let M=MODES[MODE];
+const MODE=(window.RDM&&MODES[window.RDM.mode])?window.RDM.mode:"control";
+// Session 2 (links ending in -2): same group, but nobody gets help.
+const SESSION=window.RDM&&window.RDM.session==2?2:1;
+const withSession=(m,n)=>n==2?{...m,session:2,cond:"none"}:m;
+let M=withSession(MODES[MODE],SESSION);
 /* Level sets: the 30 training levels split into two sets of 15 (5 easy, 5 medium, 5 hard), matched on
    best-solution length and lock detour, each with a level that needs ↻ (easy) and one that needs ⇅ (medium).
    Each study link plays one set; give half of your participants A first and the other half B first.
@@ -219,19 +223,19 @@ const SB={on:!!(SUPABASE_URL&&SUPABASE_ANON_KEY),status:"saved"},STL={saved:"Sav
 function setStatus(s){SB.status=s;const el=$("#cloud");if(el){el.dataset.s=s;el.lastChild.textContent=STL[s]}}
 const cloudChip=()=>`<span class="cloud" id="cloud" data-s="${SB.on?SB.status:"off"}"><i></i>${STL[SB.on?SB.status:"off"]}</span>`;
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
-const ACTIVE="rdm3_active_"+MODE+"_"+SET;
+const ACTIVE="rdm3_active_"+MODE+"_"+SET+"_s"+SESSION;
 function exportObj(s=S){return{key:s.key,pid:s.pid,first:s.first,last:s.last,mode:s.mode,set:s.set,session:s.session,group:s.group,assistance:s.cond,started:s.started,finished:s.finished||null,t0:s.t0,i:s.i,seen:s.seen,
- sbTo:s.sbTo||0,screen:s.screen,tz:s.tz,levels:s.res,quiz:s.quiz,events:s.log}}
+ sbTo:s.sbTo||0,sbLv:s.sbLv||0,screen:s.screen,tz:s.tz,levels:s.res,quiz:s.quiz,events:s.log}}
 function save(){if(S)LS.set("rdm3_"+S.key,JSON.stringify(exportObj()))}
 function sessionDoc(s){return{key:s.key,pid:s.pid,firstName:s.first||null,lastName:s.last||null,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,
- status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res,quiz:s.quiz,quizScore:s.quiz.length?s.quiz.filter(q=>q.ok).length:null,
+ status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res.slice(s.sbLv||0),quiz:s.quiz,quizScore:s.quiz.length?s.quiz.filter(q=>q.ok).length:null,
  eventCount:s.log.length,skipAfter:CFG.skipAfterSecs,ua:navigator.userAgent,screen:s.screen,timezone:s.tz}}
 async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:txt.length<60000,
  headers:Object.assign({apikey:SUPABASE_ANON_KEY,"Content-Type":"application/json"},SUPABASE_ANON_KEY.startsWith("sb_")?{}:{Authorization:"Bearer "+SUPABASE_ANON_KEY}),body:txt});
  if(!r.ok)throw new Error(fn+" "+r.status+" "+(await r.text()).slice(0,300))}
 function sbSync(s=S){if(!SB.on||!s)return Promise.resolve(true);if(s.sbBusy){s.sbAgain=true;return s.sbBusy}
  s.sbBusy=(async()=>{let ok=true;setStatus("saving");
-  do{s.sbAgain=false;try{await sbRpc("rdm_save_session",{s:sessionDoc(s)});
+  do{s.sbAgain=false;try{const nLv=s.res.length;await sbRpc("rdm_save_session",{s:sessionDoc(s)});s.sbLv=nLv;
     while((s.sbTo||0)<s.log.length){const from=s.sbTo||0,batch=s.log.slice(from,from+150).map((e,i)=>({...e,seq:from+i}));await sbRpc("rdm_save_events",{k:s.key,evs:batch});s.sbTo=from+batch.length}
     ok=true}catch(e){ok=false;console.warn("supabase",e)}}while(s.sbAgain&&ok);
   s.sbBusy=null;setStatus(ok?"saved":"error");if(!ok){clearTimeout(s.sbRetry);s.sbRetry=setTimeout(()=>sbSync(s),8000)}else save();return ok})();return s.sbBusy}
@@ -242,7 +246,7 @@ function flush(){clearTimeout(flushTimer);return sbSync()}
 /* ======================= SESSION ======================= */
 let S=null,L=null,G=null,Q=null,idleTimer=null,DLG=false;
 const now=()=>Date.now();
-function log(type,d={}){if(!S)return;S.log.push({t:now()-S.t0,at:new Date().toISOString(),lv:S.i,levelId:L?L.id:null,kind:L?L.tier:null,...d,type});save();touch()}
+function log(type,d={}){if(!S)return;S.log.push({t:now()-S.t0,at:new Date().toISOString(),lv:S.i,levelId:L?L.id:null,kind:L?L.tier:null,...(G&&L&&!G.done?{lt:now()-G.t}:{}),...d,type});save();touch()}
 const safeId=s=>String(s).replace(/[^A-Za-z0-9_-]/g,"-").slice(0,60)||"P00";
 const cleanName=s=>String(s||"").replace(/\s+/g," ").trim().slice(0,60);
 // participant id = normalised "first-last" (accents and case ignored), so the same person links across sessions
@@ -268,12 +272,12 @@ function welcome(){if(DEV)return devSetup();S=null;L=null;G=null;Q=null;V.host=n
  if(!r)$("#fn").focus()}
 function newS(first,last,set=SET){const st=new Date().toISOString(),pid=nameId(first,last);
  return{pid,first,last,mode:MODE,set,session:M.session,group:M.group,cond:M.cond,i:0,res:[],log:[],quiz:[],t0:now(),started:st,seen:{},sbTo:0,
-  key:`rdm3_${safeId(pid)}_${MODE}${set}_${st.replace(/[:.]/g,"-")}`,plan:planFor(set),
+  key:`rdm3_${safeId(pid)}_${MODE}${set}${M.session==2?"-2":""}_${st.replace(/[:.]/g,"-")}`,plan:planFor(set),
   screen:`${screen.width}x${screen.height} @${devicePixelRatio||1}x, window ${innerWidth}x${innerHeight}`,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||"")}}
 function begin(first,last){S=newS(first,last);LS.set(ACTIVE,S.key);const pid=S.pid;
  log("session_start",{pid,firstName:first,lastName:last,mode:MODE,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
 function resume(o){const set=SETS[o.set]?o.set:SET;S={pid:o.pid,first:o.first,last:o.last,mode:MODE,set,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
- sbTo:o.sbTo||0,key:o.key,plan:planFor(set),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
+ sbTo:o.sbTo||0,sbLv:o.sbLv||0,key:o.key,plan:planFor(set),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
  if(S.i>=S.plan.length)end();else startLevel()}
 
 /* ======================= TEXT SCREENS ======================= */
@@ -286,17 +290,19 @@ function intro(step=0){if(!S)return;log("intro_step",{step:step+1});
   :S.cond=="adaptive"?{h:"Hint assistant",tag:CFG.adaptiveAutoPlay?(CFG.adaptiveLockLoops>0?`Plays automatically · ${twice}`:"Plays automatically"):"Lights up when ready",t:CFG.adaptiveAutoPlay?`An assistant is watching. When it thinks a hint would help, the lightbulb lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${twice}, then it's your turn again.`:""}`
    :`An assistant is watching. When it thinks a hint would help, the lightbulb lights up. Click it whenever you like and a ghost die will show you the next few rolls.`}
   :null;
+ // session 2: groups that had hints last time are told there are none now; the control group sees nothing about hints
+ const noneNow=S.session==2&&(S.group=="adaptive"||S.group=="user");
  const screens=[
   {title:"Reach the flag",body:`The goal of the game is to reach the flag <span class="tileChip exit" aria-label="flag square">⚑</span><span class="sub">Try to reach the end in the fewest moves possible.</span>`,demo:`<div class="demo big" id="dA"></div>`},
   {title:"Rolling changes the top",body:`When you roll the die, the <b>top face</b> changes depending on which way you roll.`,demo:`<div class="demo big" id="dB"><div class="dread" aria-hidden="true">Top <b id="dBtop">1</b></div></div>`},
   {title:"Blue number squares",body:`You can only land on a blue square <span class="tileChip lock" aria-label="blue number square">4</span> if the die will land with that number facing up.`,
    demo:`<div class="demo big pair" id="dC"><div class="half"><div class="dhost" id="dC1"></div><span class="dcap bad">✕ 4 would be on top, not 6</span></div><div class="half"><div class="dhost" id="dC2"></div><span class="dcap good">✓ 4 is on top, so it fits</span></div></div>`},
-  {title:"How to play",body:"",demo:`<div class="howto ${S.cond=="none"?"two":""}">
+  {title:"How to play",body:"",demo:`<div class="howto ${S.cond=="none"&&!noneNow?"two":""}">
    <div class="hcard"><div class="hk">Move</div><div class="arrows"><kbd class="ku">↑</kbd><kbd class="kl">←</kbd><kbd class="kd">↓</kbd><kbd class="kr">→</kbd></div>
     <p>Roll with the <b>arrow keys</b> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, the arrow buttons next to the board, or swipe on a touch screen.</p></div>
    <div class="hcard"><div class="hk">Fix mistakes</div><div class="fixes"><span class="fbtn">↶ Undo</span><span class="fbtn">⟲ Restart</span></div>
     <p><b>Undo</b> (or <kbd>Z</kbd>) takes back your last roll. <b>Restart</b> puts the die back at the start. Your moves keep counting.</p></div>
-   ${S.cond=="none"?"":`<div class="hcard hint"><div class="hk">${help.h}</div><div class="bulbBig ${S.cond}">${BULB}</div><span class="htag">${help.tag}</span><p>${help.t}</p></div>`}</div>
+   ${noneNow?`<div class="hcard hint off"><div class="hk">No hints this time</div><div class="noHint">✕</div><p>This session has no hints. You're on your own.</p></div>`:S.cond=="none"?"":`<div class="hcard hint"><div class="hk">${help.h}</div><div class="bulbBig ${S.cond}">${BULB}</div><span class="htag">${help.tag}</span><p>${help.t}</p></div>`}</div>
    <p class="introSmall">You'll start with a short practice level, then play ${nLev} levels that get harder as you go. Try to finish each one in as few moves as you can.</p>`}];
  const sc=screens[step];
  app.innerHTML=bar()+`<main class="screen"><div class="sheet intro3" style="--dir:${intro.dir||1}">
@@ -348,21 +354,40 @@ function startLevel(){const def=S.plan[S.i];
  L=loadLevel(def);save();
  G={r:L.start[0],c:L.start[1],o:O0.slice(),hist:[],moves:0,undos:0,blocked:0,t:now(),lastAct:now(),done:false,skipped:false,
   hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
-  visits:new Map(),allStates:new Set(),restarts:0,movesBefore:0,blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0};
- G.best=dist();G.lastD=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
+  visits:new Map(),allStates:new Set(),restarts:0,movesBefore:0,blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0,
+  tr:{acts:[],prevT:0,firstMoveMs:null,rolls:0,opt:0,nonOpt:0,dead:0,revisits:0,repeatBlocks:0,idles:0,tiles:{spin:0,flip:0},hidden:0,hiddenAt:null,maxPause:0,dts:[],hints:[],follow:null,bestDist:null}};
+ G.best=dist();G.lastD=G.best;G.tr.bestDist=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
+ if(document.visibilityState=="hidden")G.tr.hiddenAt=now();
  log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,hash:L.hash,edited:!!(DEV&&window.RDM_EDITOR&&RDM_EDITOR.edited(L.id)&&S.useEdits),assist:assist()?S.cond:"none"});buildGame();
  clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
 function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
+/* ---- per-level play record (saved with every level: level_results.actions and .hint_details) ----
+   Each action: t = ms since the level started, dt = ms since the player's previous action (decision time),
+   plus the die's position (p = "row,col") and orientation (o = top,back,right) after it. */
+function rec(a,x={},player=true){const T=G.tr,t=now()-G.t,e={t,a,...x};
+ if(player){e.dt=t-T.prevT;T.prevT=t;T.maxPause=Math.max(T.maxPause,e.dt);T.dts.push(e.dt);
+  const h=T.hints[T.hints.length-1];if(h&&h.firstActionAfterMs==null&&h.endedAt!=null)h.firstActionAfterMs=t-h.t;}
+ T.acts.push(e);return e}
+const posx=()=>({p:G.r+","+G.c,o:G.o.join("")});
+/* did the player do what the last hint showed? Called on each action while a hint is being "followed". */
+function followEnd(ok,why){const f=G.tr.follow;if(!f)return;G.tr.follow=null;const h=f.info;h.followed=ok;h.followEnd=why;
+ log("hint_follow",{n:h.n,followed:ok,matched:h.matched,of:h.len,why})}
+function followStep(kind,d,opt){const f=G.tr.follow;if(!f)return;
+ if(f.deadend)return followEnd(kind=="undo",kind=="undo"?"undid":kind+(d?":"+d:""));
+ if(kind=="move"&&d==f.seq[f.info.matched]){f.info.matched++;if(f.info.matched>=f.seq.length)followEnd(true,"all moves")}
+ else followEnd(false,kind=="move"?`other move ${d}${opt?" (also optimal)":""}`:kind+(d?":"+d:""))}
 function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=tryMove(L,G.r,G.c,G.o,d);G.lastAct=now();G.actsSinceHint++;G.msgInfo=false;
  if(!m.ok){G.blocked++;const bk=skey(G.r,G.c,G.o)+d,rep=G.blockSeen.has(bk);G.blockSeen.add(bk);
   G.msg=m.why=="wall"?"Blocked: wall or edge.":`Blocked: the ${L.rule} face would show ${m.face}, not ${m.need}.`;
   if(V.ok)aBump(d,G.r,G.c,G.o,m.why=="num"?m.nr+","+m.nc:null);
-  struggle(rep?"repeat_block":"probe",rep?CFG.W.repeatBlock:CFG.W.probe);log("blocked",{d,why:m.why,repeat:rep,score:+G.score.toFixed(2)});return afterAct()}
+  if(rep)G.tr.repeatBlocks++;rec("blocked",{d,why:m.why,...(m.why=="num"?{face:m.face,need:m.need}:{}),repeat:rep,...posx()});followStep("blocked",d);
+  struggle(rep?"repeat_block":"probe",rep?CFG.W.repeatBlock:CFG.W.probe);log("blocked",{d,why:m.why,...(m.why=="num"?{face:m.face,need:m.need}:{}),repeat:rep,score:+G.score.toFixed(2)});return afterAct()}
  const r0=G.r,c0=G.c,o0=G.o;G.hist.push([G.r,G.c,G.o]);G.r=m.r;G.c=m.c;G.o=m.o;G.moves++;G.msg="";
  if(V.ok){const mid=roll(o0,d);aRoll(d,r0,c0,o0,m.r,m.c,mid);if(m.tile)aTile(m.tile,m.r,m.c,mid,m.o)}
  if(m.tile){const first=!S.log.some(e=>e.type=="tile"&&e.tile==m.tile);
-  if(first){G.msg="Something happened to the die on that square.";G.msgInfo=true;G.discovered=true}log("tile",{tile:m.tile,first})}
- log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move")}
+  if(first){G.msg="Something happened to the die on that square.";G.msgInfo=true;G.discovered=true}G.tr.tiles[m.tile]++;log("tile",{tile:m.tile,first})}
+ G.tr.rolls++;if(G.tr.firstMoveMs==null)G.tr.firstMoveMs=now()-G.t;
+ log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move",d,m.tile)}
 /* Restart: die back to the start. The move counter is NOT reset: moves, undos, blocks, hints and time all
    keep counting for the level, so moves (and totalMoves) cover every attempt. The struggle score is kept, but
    progress tracking restarts from the start square so the next attempt can earn "progress" again. */
@@ -370,10 +395,16 @@ function restart(){if(!G||G.done||DLG||hintLocked())return;endHint("restart");co
  G.restarts++;G.visits.forEach((_,k)=>G.allStates.add(k));
  G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
  G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;
+ rec("restart",{movesSoFar:prev,...posx()});followStep("restart");
  if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesSoFar:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
 function undo(){if(!G||G.done||!G.hist.length||DLG||hintLocked())return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
 /* ---- struggle detector v2: productive vs unproductive (see DETECTOR.md) ---- */
-function evalState(kind){const W_=CFG.W,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
+function evalState(kind,dir,tile){const W_=CFG.W,d0=G.lastD,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
+ // optimal = this roll brought the die one step closer to the exit along a shortest solution
+ const opt=kind=="move"&&d!=Infinity&&d0!=null&&d0!=Infinity&&d==d0-1,T=G.tr;
+ if(kind=="move"){if(opt)T.opt++;else T.nonOpt++}if(d==Infinity)T.dead++;if(v>0)T.revisits++;if(d!=Infinity&&(T.bestDist==null||d<T.bestDist))T.bestDist=d;
+ rec(kind,{...(dir?{d:dir}:{}),...(tile?{tile}:{}),...posx(),dist:d==Infinity?null:d,...(kind=="move"?{opt}:{}),...(v>0?{revisit:true}:{})});
+ followStep(kind,dir,opt);
  let type,w,stag=false;
  if(d==Infinity){type="deadend";w=W_.deadend}
  else if(d<G.best){G.best=d;type="progress";w=W_.progress}
@@ -389,7 +420,7 @@ function evalState(kind){const W_=CFG.W,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.
  if(G.r==L.exit[0]&&G.c==L.exit[1])return finish(false);afterAct()}
 function struggle(type,w){G.score=Math.max(0,G.score+w);G.maxScore=Math.max(G.maxScore,G.score);G.recent.push(type);if(G.recent.length>8)G.recent.shift()}
 function idleTick(){if(!G||G.done||Q||DLG)return;const idle=(now()-G.lastAct)/1000;
- if(idle>=CFG.idleSecs&&!G.hint){struggle("idle",CFG.W.idle);log("idle",{secs:Math.round(idle),score:+G.score.toFixed(2)});checkDetector()}
+ if(idle>=CFG.idleSecs&&!G.hint){struggle("idle",CFG.W.idle);G.tr.idles++;rec("idle",{secs:Math.round(idle)},false);log("idle",{secs:Math.round(idle),score:+G.score.toFixed(2)});checkDetector()}
  if(!G.skipShown&&(now()-G.t)/1000>=CFG.skipAfterSecs){G.skipShown=true;drawPanel()}}
 function afterAct(){checkDetector();drawPanel()}
 function gate(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
@@ -409,15 +440,22 @@ function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forE
    An automatic (adaptive) hint locks input until the ghost has played it CFG.adaptiveLockLoops times. ---- */
 function hintLen(){return L.tier=="easy"?CFG.hintMovesEasy:L.tier=="hard"?CFG.hintMovesHard:CFG.hintMovesMedium}
 const hintLocked=()=>!!(G&&G.hint&&G.hint.lockUntil&&now()<G.hint.lockUntil);
-function giveHint(auto){if(!G||G.done)return;G.hints++;if(auto)G.autoHints++;G.offer=false;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;
+function giveHint(auto){if(!G||G.done)return;const score0=G.score,cause=dominant();G.hints++;if(auto)G.autoHints++;G.offer=false;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;
  const p=bfs(L,G.r,G.c,G.o),seq=p?p.slice(0,hintLen()):null;
  G.hint={auto,seq,deadend:!p,t0:now()};
+ // hint record: when it came, how, what it showed, and (filled in later) how long it was watched and whether it was followed
+ const T=G.tr,t=now()-G.t,info={n:T.hints.length+1,t,how:auto?(S.cond=="adaptive"&&CFG.adaptiveAutoPlay?"automatic":"offered"):"clicked",sinceLastActionMs:t-T.prevT,
+  movesSoFar:G.moves,distAtHint:p?p.length:null,deadend:!p,shown:seq?seq.join(""):"",len:seq?seq.length:0,struggleScore:+score0.toFixed(2),cause,lockMs:0,watchedMs:null,endReason:null,endedAt:null,
+  firstActionAfterMs:null,matched:0,followed:null,followEnd:null,...posx()};
+ if(T.follow)followEnd(false,"new hint");T.hints.push(info);T.follow={info,seq:seq||[],deadend:!p};G.hint.info=info;rec("hint",{n:info.n,how:info.how,shown:info.shown},false);
  if(seq&&V.ok)startGhost(L,G.r,G.c,G.o,seq);
  if(auto&&V.gh&&CFG.adaptiveLockLoops>0){const h=G.hint,ms=Math.round(V.gh.cycle*CFG.adaptiveLockLoops);h.lockUntil=now()+ms;h.lockMs=ms;
   h.unlockTimer=setTimeout(()=>{if(G&&G.hint===h){G.lastAct=now();log("hint_unlocked",{ms});drawBulb();drawPanel()}},ms+30)}
- log("hint",{auto,cause:dominant(),shown:seq?seq.join(""):null,len:seq?seq.length:0,dist:p?p.length:null,lockMs:G.hint.lockMs||0});
+ G.hint.info.lockMs=G.hint.lockMs||0;
+ log("hint",{n:G.hint.info.n,how:G.hint.info.how,auto,cause,shown:seq?seq.join(""):null,len:seq?seq.length:0,dist:p?p.length:null,lockMs:G.hint.lockMs||0,sinceLastActionMs:G.hint.info.sinceLastActionMs,struggleScore:G.hint.info.struggleScore});
  drawBulb();drawPanel()}
-function endHint(reason){if(!G||!G.hint)return;clearTimeout(G.hint.unlockTimer);const ms=now()-G.hint.t0;G.hintMs+=ms;log("hint_end",{reason,ms});G.hint=null;stopGhost();drawBulb()}
+function endHint(reason){if(!G||!G.hint)return;clearTimeout(G.hint.unlockTimer);const ms=now()-G.hint.t0;G.hintMs+=ms;
+ const h=G.hint.info;if(h){h.watchedMs=ms;h.endReason=reason;h.endedAt=now()-G.t;rec("hint_end",{n:h.n,reason,ms},false)}log("hint_end",{n:h&&h.n,reason,ms});G.hint=null;stopGhost();drawBulb()}
 function hintCaption(){const h=G.hint;if(h.deadend)return`<div class="caption"><b>No way out from here.</b> Undo a few moves and try another way.<div class="dim">Any key or click hides this.</div></div>`;
  let r=G.r,c=G.c,o=G.o,note="";for(const d of h.seq){const m=tryMove(L,r,c,o,d);const cell=L.g[m.r][m.c];
   if(!note&&cell.num)note=`Watch it reach the <b>${cell.num}</b> square with ${cell.num} on the ${L.rule=="top"?"top":"bottom"}.`;
@@ -429,13 +467,22 @@ function drawBulb(){const el=$("#bulb");if(!el||!G)return;if(!assist()||G.done){
  const lbl=G.hint?"":ad?(G.offer?"Hint ready: click when you want it":"Assistant watching"):"Hint";
  el.innerHTML=`<button class="bulbBtn" id="bulbBtn" aria-label="${ad?"Assistant hint":"Get a hint"}" ${s=="watch"?"disabled":""}>${BULB}</button>${lbl?`<div class="bulbLbl">${lbl}</div>`:""}${G.hint?hintCaption():""}`;
  const b=$("#bulbBtn");b.onclick=e=>{e.stopPropagation();if(G.hint)return;if(ad){if(G.offer){log("help_click",{offer:true,waitedMs:now()-(G.offerAt||now())});giveHint(true)}}else{log("help_click");giveHint(false)}}}
-function finish(skipped){endHint(skipped?"skip":"solved");G.done=true;G.skipped=skipped;clearInterval(idleTimer);
+function finish(skipped){endHint(skipped?"skip":"solved");const T=G.tr;
+ if(skipped)rec("skip",{...posx(),dist:G.lastD==Infinity?null:G.lastD});if(T.follow)followEnd(T.follow.info.matched>=T.follow.seq.length&&!T.follow.deadend,skipped?"skipped":"level solved");
+ if(T.hiddenAt!=null){T.hidden+=now()-T.hiddenAt;T.hiddenAt=null}
+ G.done=true;G.skipped=skipped;G.doneAt=now();clearInterval(idleTimer);
+ const dts=T.dts.slice().sort((a,b)=>a-b),med=dts.length?dts[dts.length>>1]:null,H=T.hints;
  const e={level:S.i+1,id:L.id,hash:L.hash,phase:L.phase,tier:L.tier,kind:L.tier,rule:L.rule,solved:!skipped,skipped,moves:G.moves,opt:L.opt,efficiency:skipped?null:+(L.opt/G.moves).toFixed(3),
   undos:G.undos,blocked:G.blocked,hints:G.hints,autoHints:G.autoHints,hintOffers:G.offers,hintOfferUnused:!!G.offer,hintMs:G.hintMs,detectorFires:G.fires,maxStruggle:+G.maxScore.toFixed(2),
-  restarts:G.restarts,totalMoves:G.movesBefore+G.moves,uniqueStates:new Set([...G.allStates,...G.visits.keys()]).size,secs:Math.round((now()-G.t)/1000)};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
+  restarts:G.restarts,totalMoves:G.moves,uniqueStates:new Set([...G.allStates,...G.visits.keys()]).size,secs:Math.round((now()-G.t)/1000),
+  ms:now()-G.t,rolls:T.rolls,firstMoveMs:T.firstMoveMs,optimalMoves:T.opt,nonOptimalMoves:T.nonOpt,deadendStates:T.dead,revisits:T.revisits,repeatBlocks:T.repeatBlocks,
+  bestDist:T.bestDist,finalDist:skipped?(G.lastD==Infinity?null:G.lastD):0,spinUses:T.tiles.spin,flipUses:T.tiles.flip,idleChecks:T.idles,
+  medianDecisionMs:med,meanDecisionMs:dts.length?Math.round(dts.reduce((a,b)=>a+b,0)/dts.length):null,maxPauseMs:T.maxPause,hiddenMs:T.hidden,
+  firstHintMs:H.length?H[0].t:null,hintsFollowed:H.filter(h=>h.followed).length,hintMovesShown:H.reduce((a,h)=>a+h.len,0),hintMovesFollowed:H.reduce((a,h)=>a+h.matched,0),
+  hintWatchMs:H.reduce((a,h)=>a+(h.watchedMs||0),0),hintDetails:H,actions:T.acts};S.res.push(e);log(skipped?"level_skipped":"level_done",e);flush();
  if(!skipped&&V.ok)V.q.push({dur:60,step:()=>{},end:()=>confetti(G.r,G.c)});
  drawPanel();drawBulb();setTimeout(drawDone,skipped?0:450)}
-function next(){S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else end()}
+function next(){if(G&&G.doneAt)log("next_click",{afterMs:now()-G.doneAt,levelId:L&&L.id});S.i++;G=null;save();if(S.i<S.plan.length)startLevel();else end()}
 
 /* ---------- game screen ---------- */
 function buildGame(){
@@ -511,6 +558,7 @@ function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.
  <p class="mu">Sessions from this link are saved with <code>mode = 'dev'</code> and <code>grp = 'dev'</code>, so filter them out of the study data with <code>where mode &lt;&gt; 'dev'</code>. Settings changed here apply only in this browser. To make them the study defaults, copy them into <code>CFG</code> in app.js.</p>
  <div class="grid2"><div>
   <label for="dc">Condition</label><select id="dc">${conds.map(([k,t])=>`<option value="${k}" ${pr.cond==k?"selected":""}>${t}</option>`).join("")}</select>
+  <label for="dss">Session</label><select id="dss"><option value="1" ${+pr.session!=2?"selected":""}>1 (help as the condition says)</option><option value="2" ${+pr.session==2?"selected":""}>2 (no help for anyone)</option></select>
   <label for="ds2">Level set</label><select id="ds2">${["A","B"].map(k=>`<option value="${k}" ${(pr.set||"A")==k?"selected":""}>Set ${k} (${SETS[k].length} levels)</option>`).join("")}</select>
   <label for="dl">Start at</label><select id="dl"></select>
   <div class="grid2" style="gap:0 12px"><div><label for="dfn">First name</label><input id="dfn" value="${esc(pr.first||"Dev")}"></div><div><label for="dln">Last name</label><input id="dln" value="${esc(pr.last||"Tester")}"></div></div>
@@ -531,13 +579,13 @@ function devSetup(){devStop();const pr=devPrefs();applyCfg(pr.cfg);useLevels(pr.
  const fillLevels=()=>{const pl=planFor($("#ds2").value);$("#dl").innerHTML=pl.map((d,i)=>`<option value="${i}" ${(pr.set||"A")==$("#ds2").value&&pr.start==i?"selected":""}>${d.id} · ${d.phase}${d.phase=="training"?" · "+d.tier:d.phase=="practice"?"":" · "+d.tier}${d.rule=="bottom"?" (bottom rule)":""} · ${d.n}×${d.n}, best ${d.opt}</option>`).join("")};
  fillLevels();$("#ds2").onchange=fillLevels;
  const read=()=>{const c={W:{}};for(const k in CFG_DEFAULT){if(k=="W")continue;const el=$("#c_"+k);c[k]=typeof CFG_DEFAULT[k]=="boolean"?el.value=="true":+el.value}for(const k in CFG_DEFAULT.W)c.W[k]=+$("#w_"+k).value;return c};
- const store=()=>{const c=read();applyCfg(c);const p={useEdits:$("#due")?$("#due").checked:true,cond:$("#dc").value,set:$("#ds2").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
+ const store=()=>{const c=read();applyCfg(c);const p={useEdits:$("#due")?$("#due").checked:true,cond:$("#dc").value,session:+$("#dss").value,set:$("#ds2").value,start:+$("#dl").value,first:cleanName($("#dfn").value)||"Dev",last:cleanName($("#dln").value)||"Tester",hud:$("#dh").checked,save:$("#ds").checked,intro:$("#di").checked,cfg:c};LS.set(DEVK,JSON.stringify(p));return p};
  $("#rs").onclick=()=>{const p=devPrefs();delete p.cfg;LS.set(DEVK,JSON.stringify(p));for(const k in CFG_DEFAULT)CFG[k]=k=="W"?{...CFG_DEFAULT.W}:CFG_DEFAULT[k];devSetup()};
  $("#cp").onclick=async()=>{store();const t="const CFG="+JSON.stringify(CFG,null,1).replace(/\n\s*/g," ")+";";const ta=$("#code");ta.style.display="block";ta.value=t;ta.select();try{await navigator.clipboard.writeText(t);$("#cp").textContent="Copied"}catch(e){$("#cp").textContent="Select and copy below"}};
  $("#go").onclick=()=>{const p=store();devStart(p)};
  if($("#due"))$("#due").onchange=()=>{useLevels($("#due").checked);fillLevels()};
  if($("#ged"))$("#ged").onclick=()=>{store();RDM_EDITOR.open()}}
-function devStart(p){useLevels(p.useEdits!==false);M={...MODES[p.cond],label:"Development · "+p.cond};
+function devStart(p){useLevels(p.useEdits!==false);M={...withSession(MODES[p.cond],+p.session||1),label:"Development · "+p.cond+(+p.session==2?" · session 2 (no help)":"")};
  SB.on=!!(SUPABASE_URL&&SUPABASE_ANON_KEY)&&p.save;S=newS(p.first,p.last,SETS[p.set]?p.set:"A");S.group="dev";S.mode="dev";S.devHud=p.hud;S.i=p.start;S.useEdits=p.useEdits!==false;
  if(!p.intro)S.seen={immediate:true,bottom:true};
  log("session_start",{pid:S.pid,firstName:S.first,lastName:S.last,mode:"dev",devCondition:p.cond,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:"dev",assistance:S.cond,startAt:p.start,cfg:JSON.parse(JSON.stringify(CFG)),url:location.href});flush();
@@ -562,7 +610,10 @@ function drawHud(){const el=$("#hud");if(!el||!G||!S)return;if(!S.devHud){el.sty
  <span>On fire</span><b>${live?(CFG.adaptiveAutoPlay?"show hint":"offer hint"):"log only"}</b></div>
  <div class="hudr">${G.recent.map(t=>`<i class="${t}">${t.replace("_"," ")}</i>`).join("")}</div>`}
 
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="hidden"&&S)flush()});
+document.addEventListener("visibilitychange",()=>{const hid=document.visibilityState=="hidden";
+ if(G&&!G.done){const T=G.tr;if(hid&&T.hiddenAt==null){T.hiddenAt=now();rec("tab_hidden",{},false);log("tab_hidden")}
+  else if(!hid&&T.hiddenAt!=null){const ms=now()-T.hiddenAt;T.hidden+=ms;T.hiddenAt=null;rec("tab_visible",{ms},false);log("tab_visible",{ms})}}
+ if(hid&&S)flush()});
 window.__rdm={CFG,MODE,devGo,restart,get LV(){return LV},get S(){return S},get G(){return G},get L(){return L},bfs,act,undo,giveHint,V};
 // start once every script on the page (levels.js, editor.js on the dev link) has loaded
 function boot(){if(!LV){app.innerHTML=`<p style="padding:30px">Levels failed to load. Please reload the page.</p>`;return}

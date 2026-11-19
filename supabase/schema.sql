@@ -65,6 +65,33 @@ create table if not exists level_results (
   max_struggle    numeric,
   unique_states   int,
   secs            int,
+  ms                   bigint,
+  rolls                int,
+  total_moves          int,
+  restarts             int,
+  first_move_ms        int,
+  optimal_moves        int,
+  nonoptimal_moves     int,
+  deadend_states       int,
+  revisits             int,
+  repeat_blocks        int,
+  best_dist            int,
+  final_dist           int,
+  spin_uses            int,
+  flip_uses            int,
+  idle_checks          int,
+  median_decision_ms   int,
+  mean_decision_ms     int,
+  max_pause_ms         int,
+  hidden_ms            int,
+  first_hint_ms        int,
+  hints_followed       int,
+  hint_moves_shown     int,
+  hint_moves_followed  int,
+  hint_watch_ms        int,
+  level_hash           text,
+  hint_details         jsonb,
+  actions              jsonb,
   primary key (session_key, level)
 );
 
@@ -132,11 +159,13 @@ begin
     updated_at = now();
 
   insert into level_results(session_key, level, level_id, phase, tier, kind, rule, solved, skipped, moves, opt, efficiency,
-    undos, blocked, hints, auto_hints, hint_ms, max_tier, detector_fires, max_struggle, unique_states, secs)
+    undos, blocked, hints, auto_hints, hint_ms, max_tier, detector_fires, max_struggle, unique_states, secs,
+    ms, rolls, total_moves, restarts, first_move_ms, optimal_moves, nonoptimal_moves, deadend_states, revisits, repeat_blocks, best_dist, final_dist, spin_uses, flip_uses, idle_checks, median_decision_ms, mean_decision_ms, max_pause_ms, hidden_ms, first_hint_ms, hints_followed, hint_moves_shown, hint_moves_followed, hint_watch_ms, level_hash, hint_details, actions)
   select k, (l->>'level')::int, l->>'id', l->>'phase', l->>'tier', l->>'kind', l->>'rule', (l->>'solved')::boolean, (l->>'skipped')::boolean,
     (l->>'moves')::int, (l->>'opt')::int, (l->>'efficiency')::numeric, (l->>'undos')::int, (l->>'blocked')::int,
     (l->>'hints')::int, (l->>'autoHints')::int, (l->>'hintMs')::int, (l->>'maxTier')::int, (l->>'detectorFires')::int,
-    (l->>'maxStruggle')::numeric, (l->>'uniqueStates')::int, (l->>'secs')::int
+    (l->>'maxStruggle')::numeric, (l->>'uniqueStates')::int, (l->>'secs')::int,
+    (l->>'ms')::bigint, (l->>'rolls')::int, (l->>'totalMoves')::int, (l->>'restarts')::int, (l->>'firstMoveMs')::int, (l->>'optimalMoves')::int, (l->>'nonOptimalMoves')::int, (l->>'deadendStates')::int, (l->>'revisits')::int, (l->>'repeatBlocks')::int, (l->>'bestDist')::int, (l->>'finalDist')::int, (l->>'spinUses')::int, (l->>'flipUses')::int, (l->>'idleChecks')::int, (l->>'medianDecisionMs')::int, (l->>'meanDecisionMs')::int, (l->>'maxPauseMs')::int, (l->>'hiddenMs')::int, (l->>'firstHintMs')::int, (l->>'hintsFollowed')::int, (l->>'hintMovesShown')::int, (l->>'hintMovesFollowed')::int, (l->>'hintWatchMs')::int, l->>'hash', l->'hintDetails', l->'actions'
   from jsonb_array_elements(coalesce(s->'levels','[]'::jsonb)) l
   on conflict (session_key, level) do nothing;
 

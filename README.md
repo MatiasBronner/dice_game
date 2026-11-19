@@ -14,10 +14,11 @@ Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the 
 | `/play/2a/`, `/play/2b/` | Control: no help | A, B |
 | `/play/3a/`, `/play/3b/` | Adaptive: when the struggle detector fires, the hint plays automatically and the player watches it twice before moving | A, B |
 | `/play/4a/`, `/play/4b/` | Help always available (lightbulb) | A, B |
+| `/play/2a-2/` … `/play/4b-2/` | **Session 2** for each group: same group, **no help for anyone** | A, B |
 
 The paths are numbered, not named, so participants can't tell which condition they're in.
 
-**Each participant plays twice**, once with each set, in the same condition both times. Counterbalance the order: in each condition, send half the participants the A link first and the B link second, and the other half B then A. The set is saved as `sessions.level_set`; the order of a person's sessions comes from `started_at`.
+**Each participant plays twice**, once with each set. **Session 1** uses the plain link for their group (help as the group says). **Session 2** uses their group's `-2` link, where nobody gets help (hints are off, the lightbulb is hidden; the struggle detector still logs when it *would* have fired). Counterbalance the sets: in each group, half the participants play A then B (`3a` → `3b-2`) and the other half B then A (`3b` → `3a-2`). Saved as `sessions.session` (1 or 2), `sessions.level_set` (A or B), `sessions.grp` (the group) and `sessions.assistance` (`none` in session 2). On session 2's How-to-play screen, the adaptive and help-always groups are told there are no hints this time; the control group sees nothing about hints.
 
 ### Sign-in and repeat testing
 
@@ -63,6 +64,61 @@ select s.pid, s.mode, e.data->>'id' as level, (e.data->>'restarts')::int as rest
        (e.data->>'moves')::int as final_moves, (e.data->>'totalMoves')::int as total_moves
 from events e join sessions s using (session_key)
 where e.type = 'level_done' and s.mode <> 'dev' order by s.pid, e.at;
+```
+
+## Data collected
+
+Everything is saved per participant, per session and per level. **Run `supabase/migration.sql` in the Supabase SQL Editor** to add the detailed columns below (safe to rerun; until you do, the game keeps saving the older columns, and all the detail is still in `events`).
+
+### Per level (`level_results`, one row per level played)
+
+| Column | What it is |
+|---|---|
+| `level_id`, `level_hash`, `phase`, `tier`, `opt` | Which level (and exact layout version), its tier and best possible solution |
+| `solved`, `skipped` | Whether they reached the exit or skipped the level |
+| `moves` / `total_moves` | Moves counted across all attempts (restarts don't reset it; an undo counts as a move) |
+| `rolls` | Forward rolls only |
+| `efficiency` | `opt / moves` (solved levels) |
+| `restarts`, `undos`, `blocked`, `repeat_blocks` | Restarts, undos, blocked moves, and blocked moves repeated from the same state |
+| `optimal_moves`, `nonoptimal_moves` | Rolls that did / didn't bring the die one step closer to the exit along a shortest solution |
+| `deadend_states`, `revisits`, `unique_states` | Times in a state with no way out, returns to an earlier state, distinct states visited |
+| `best_dist`, `final_dist` | Closest they got to the exit (in optimal moves), and how far they were when the level ended (0 if solved) |
+| `spin_uses`, `flip_uses` | Times they rolled onto ↻ / ⇅ |
+| `ms`, `secs`, `first_move_ms` | Time on the level, and time before the first roll |
+| `median_decision_ms`, `mean_decision_ms`, `max_pause_ms` | Time between their actions |
+| `idle_checks`, `hidden_ms` | 5-second idle checks after 25 s without input, and time the tab was hidden (switched away) |
+| `hints`, `auto_hints`, `hint_ms`, `hint_watch_ms` | Hints shown, how many were automatic, and how long they were on screen |
+| `first_hint_ms` | Time from level start to the first hint |
+| `hints_followed`, `hint_moves_shown`, `hint_moves_followed` | Hints where the player then made every shown move, and shown vs. copied moves in total |
+| `detector_fires`, `max_struggle` | Struggle detector fires (logged in every group, as a counterfactual where there's no help) and peak score |
+| `hint_details` (jsonb) | One entry per hint, below |
+| `actions` (jsonb) | Every action in order, below: a full replay of the level |
+
+**`actions`**: each entry has `t` (ms since the level started) and `a`, the action: `move`, `blocked`, `undo`, `restart`, `skip`, or (not the player's own) `hint`, `hint_end`, `idle`, `tab_hidden`, `tab_visible`. Player actions also have `dt` (ms since their previous action, i.e. decision time), `p` (die position "row,col") and `o` (orientation: top, back, right faces). Moves add `d` (N/S/E/W), `opt` (true if optimal), `dist` (optimal moves left), `tile` (↻/⇅ if they rolled onto one), `revisit`. Blocked moves add `why` (`wall` or `num`), `face` vs `need` for number squares, and `repeat`.
+
+**`hint_details`**: per hint: `n`, `t` (ms into the level), `how` (`automatic`, `offered` or `clicked`), `sinceLastActionMs` (time since their last action when the hint came or was clicked), `movesSoFar`, `distAtHint`, `shown` (e.g. `EEN`), `len`, `struggleScore` and `cause` (what the detector saw), `lockMs` (adaptive: time they had to watch), `watchedMs`, `endReason` (`move`, `key`, `click`, …), `firstActionAfterMs`, `matched` (how many of the shown moves they then made, in order), `followed` (true if all of them), `followEnd` (why following stopped, e.g. `other move W (also optimal)`), and the die's position and orientation.
+
+### Per action (`events`)
+
+Every event above is also a row in `events`, with `t_ms` (since session start), `at` (clock time) and, during a level, `lt` (ms since the level started). Also logged: `session_start`/`session_resume`/`session_end`, `intro_step` (each start screen), `level_start`, `state` (detector classification after each move), `tile`, `detector_fire`, `hint`, `hint_unlocked`, `hint_end`, `hint_follow`, `help_click`, `next_click` (time spent on the "Solved" card), `level_done`/`level_skipped` (the full level summary).
+
+### Per session and person
+
+`sessions`: who, group, session 1 or 2, level set, assistance, start/finish, status, levels completed, device, screen size and timezone. `participants`: name and group.
+
+Example: per-level summary for each person, in session order.
+
+```sql
+select s.pid, s.session, s.level_set, s.grp, l.level_id, l.solved, l.skipped, l.moves, l.opt, l.restarts, l.undos,
+       l.hints, l.first_hint_ms, l.hints_followed, l.optimal_moves, l.nonoptimal_moves, l.median_decision_ms, l.ms
+from level_results l join sessions s using (session_key)
+where s.mode <> 'dev' order by s.pid, s.started_at, l.level;
+
+-- every hint and whether it was followed
+select s.pid, s.grp, l.level_id, h->>'how' how, (h->>'t')::int t_ms, (h->>'sinceLastActionMs')::int waited_ms,
+       h->>'shown' shown, (h->>'matched')::int matched, (h->>'followed')::boolean followed, h->>'followEnd' follow_end
+from level_results l join sessions s using (session_key), jsonb_array_elements(l.hint_details) h
+where s.mode <> 'dev';
 ```
 
 ## Editing levels
