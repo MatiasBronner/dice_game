@@ -175,7 +175,7 @@ Edits are saved in your browser only until you publish, so participants never se
 
 ## Hints and the struggle detector
 
-See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next optimal moves (2 on easy, 3 on medium, 5 on hard levels). In the adaptive condition it plays as soon as the detector fires and the player can't move until it has played twice.
+See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle are told apart, the weights, and how to tune them. In short: a ghost die demonstrates the next optimal moves: 1 move when the player is within 4 moves of the exit, up to 5 when they are far away. In the adaptive condition it plays as soon as the detector fires and the player can't move until it has played twice.
 
 ## Files
 
@@ -187,6 +187,7 @@ See **[DETECTOR.md](DETECTOR.md)** for how productive and unproductive struggle 
 | `app.js` / `app.css` | The game (settings in `CFG` at the top of `app.js`) |
 | `levels.js` | The levels, one per line (generated, then hand-edited with the level editor) |
 | `editor.js` | Level editor (loaded on the development link only) |
+| `tools/sim_detector.js` | Struggle-detector simulator: runs the detector against simulated players to compare settings (see DETECTOR.md) |
 | `supabase/schema.sql` | Full database setup for a new project |
 | `supabase/migration.sql` | Upgrade for an existing project (cumulative; safe to rerun) |
 

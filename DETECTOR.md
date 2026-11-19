@@ -8,11 +8,11 @@ Because every level is solved exactly (BFS over position × die orientation), th
 
 | Productive struggle (lowers the score) | Unproductive struggle (raises the score) |
 |---|---|
-| Reaching a **new best** distance to the exit | **Revisiting** a die position+orientation you've already been in (looping) |
+| Reaching a **new best** distance to the exit | **Looping excessively while drifting away** from the exit (many revisits since the last progress, well behind your best distance) |
 | **Discovering** a special tile for the first time | Repeating the **same blocked move** from the same state (not learning from the feedback) |
 | **Recovering** from a dead end with Undo | Being in a **dead end** (exit unreachable without undoing) |
 | Trying a move once and getting blocked (testing a rule) | Many actions **without any new progress** (stagnation) |
-| Exploring **new states** (only a small cost, so long aimless wandering eventually adds up) | **Idling**: no input (a little for every 10 s) |
+| Exploring **new states** or going back over old ones (only a small cost, so long aimless wandering eventually adds up) | **Idling**: no input (a little for every 10 s) |
 
 ## Scoring
 
@@ -25,29 +25,42 @@ The detector keeps a struggle score per level (never below 0). Each action adds 
 | `discovery` (first time on ↻ or ⇅ in the session) | −1 | Learning the hidden mechanics is the point |
 | `explore` (new state, no progress) | +0.2 | Free at first, adds up when wandering |
 | `probe` (first block of this move from this state) | +0.3 | Testing a hypothesis |
-| `undo` without progress | +0.4 | Added to the state's own weight |
-| `stagnation` | +0.5 per action | Once actions since the last progress exceed max(8, 1.5 × remaining optimal distance) |
+| `undo` without progress | +0.4 | An undo always lands on a state you've been in, so it is scored as `undo`, not as a loop |
+| `stagnation` | +0.5 per action | Once actions since the last progress (or the last fire or hint) exceed max(8, 1.5 × remaining optimal distance) |
 | `idle` | +0.05 per 10 s | For every full 10 s without any input, from the player's last action, always (no grace period) |
-| `loop` (revisited state) | +1 | |
+| `revisit` (back in a state you've been in) | +0.2 | Same as exploring: going back over ground is a normal part of trying things |
+| `loop` (excessive looping away from the goal) | +1 | Only when *both*: more than 4 revisits since the last progress (`loopFree`), *and* more than 2 moves further from the exit than the player's best (`loopSlack`) |
 | `repeat_block` (same blocked move again) | +1.5 | |
 | `deadend` (exit unreachable) | +1.5 | Per action while stuck |
 
-**Restart** doesn't change the struggle score. It does reset progress tracking (best distance, the stagnation count and revisits) to the start square, so a fresh attempt can earn "progress" again and walking back over the opening isn't counted as looping.
+**Restart** doesn't change the struggle score. It does reset progress tracking (best distance, the stagnation and loop counts, and revisits) to the start square, so a fresh attempt can earn "progress" again and walking back over the opening isn't counted as looping.
 
 ## When a hint fires
 
 All of these must hold:
 
-- score ≥ **6**
+- score ≥ **8**
 - at least **25 s** into the level (grace period for reading the board)
-- at least **20 s** and **6 actions** since the last hint or fire
+- at least **40 s** and **10 actions** since the last hint or fire
 - no hint currently showing
 
-After a fire, the score resets to 0. Every fire is logged with the score, the last 8 action types, and a `cause` label (`loop`, `repeat_block`, `deadend`, `idle`, `stagnation` or `general`).
+After a fire (or any hint), the score, the stagnation count and the loop count all reset to 0, so the player gets a fresh budget before stagnation adds up again. Every fire is logged with the score, the last 8 action types, and a `cause` label (`loop`, `repeat_block`, `deadend`, `idle`, `stagnation` or `general`).
 
 ## What the hint is
 
-A **ghost die** demonstrates the next moves of an optimal solution from the player's current state, including what special tiles do: **2 moves on easy levels, 3 on medium, 5 on hard** (`hintMovesEasy`, `hintMovesMedium`, `hintMovesHard`; this applies to both hint conditions). It loops until the player does anything (a key, a click or a swipe). A caption lists the moves and points out the key moment, such as reaching a number square with the right face up. In a dead end, the hint says to undo instead.
+A **ghost die** demonstrates the next moves of an optimal solution from the player's current state, including what special tiles do. It loops until the player does anything (a key, a click or a swipe). A caption lists the moves and points out the key moment, such as reaching a number square with the right face up. In a dead end, the hint says to undo instead.
+
+**How many moves it shows** depends on how far the player is from the exit (*d*, the optimal number of moves left), not on the level's tier. This applies to both hint conditions, so they differ only in *when* a hint appears.
+
+| Moves left (*d*) | Hint shows | Share of what's left | Setting |
+|---|---|---|---|
+| 1–4 | 1 move | 25–100% | `hint1UpTo: 4` |
+| 5–6 | 2 moves | 33–40% | `hint2UpTo: 6` |
+| 7–10 | 3 moves | 30–43% | `hint3UpTo: 10` |
+| 11–15 | 4 moves | 27–36% | `hint4UpTo: 15` |
+| 16+ | 5 moves | ≤ 31% | `hintMaxMoves: 5` |
+
+Why: the goal is learning, so the hint should hand control back as soon as it has unstuck the player. It shows roughly a third of what's left, so the player still does most of the solving. Close to the exit, one move is enough: anything more would solve the level for them. Far from the exit, one or two moves rarely show a plan (for example, turning the die so the right face arrives on a number square), so the hint gets longer. It's capped at 5 because a longer sequence is hard to hold in mind and turns into copying, and in the adaptive condition every extra move adds about 2 s to the forced watching time.
 
 - **Help-always (link 4):** the lightbulb is always available; clicking it starts the ghost.
 - **Adaptive (link 3):** the bulb is dim ("Assistant watching"). When the detector fires, the hint **plays straight away** (`adaptiveAutoPlay = true`), and the player **can't move, undo, restart or skip until the ghost has played the demonstration twice** (`adaptiveLockLoops = 2`; one play is about 2.8 s for a 2-move hint, so the lock is roughly 5.7 s on easy, 8.4 s on medium and 10.4 s on hard, a bit longer when a special square is involved). The pad and buttons are greyed out and the caption says to watch. After that the caption says "Your turn", and the ghost keeps looping until any input. A dead-end hint ("undo a few moves") has no demonstration, so it doesn't lock. Logged: `hint` (with `len` and `lockMs`) and `hint_unlocked`. To go back to offering the hint and waiting for a click, set `adaptiveAutoPlay = false`.
@@ -57,7 +70,9 @@ A **ghost die** demonstrates the next moves of an optimal solution from the play
 
 The quickest way to tune is the **development link** (`/play/1/`). Edit the weights and thresholds on its setup screen, then play while watching the detector panel. It shows the score, each action's classification, and the reason a fire is or isn't allowed right now. **Fire detector** and **Hint now** let you check the hint without having to struggle first.
 
-All weights and thresholds are in `CFG` at the top of `app.js`. Suggested approach: run a pilot in the **control** condition, then look at `detector_fire` events against later outcomes, for example whether the player solved the level, how many more moves they needed, or whether they skipped. A good threshold fires where players would otherwise stall or skip, and stays quiet where they recover on their own.
+All weights and thresholds are in `CFG` at the top of `app.js`. Every `session_start` event records the `cfg` the session ran with, so sessions under different settings can be told apart.
+
+**Simulator.** `node tools/sim_detector.js` runs the real detector code from `app.js` against simulated players (weak, middling, strong) on all 30 levels and reports fires per level, the main causes, and how much of each solution the hints gave away. Try settings with `--cfg '{"threshold":10}'`, the adaptive condition with `--cond adaptive`, or an older copy of the game with `node tools/sim_detector.js path/to/old/app.js`. The simulated players are crude (optimal move or random move), so use it to compare settings, not to predict real fire rates. Suggested approach: run a pilot in the **control** condition, then look at `detector_fire` events against later outcomes, for example whether the player solved the level, how many more moves they needed, or whether they skipped. A good threshold fires where players would otherwise stall or skip, and stays quiet where they recover on their own.
 
 Useful queries:
 
@@ -75,6 +90,6 @@ where e.type = 'detector_fire' and s.mode <> 'dev' group by 1, 2 order by 1, 3 d
 
 ## Open design questions
 
-- **Hint length.** Set by tier (2 / 3 / 5). On easy levels 2 moves is still up to half a short solution; on hard levels 5 moves is about a third.
+- **Hint length.** Set by distance to the exit (see the table above). A possible next step: if the cut-off lands one move before a number or special square, show that one extra move so the demonstration ends on the key moment.
 - **Offered vs. automatic.** The study now plays the hint automatically and makes the player watch it twice. That makes sure the hint is seen at the moment the detector picks, at the cost of the player's control over timing. The offered version (`adaptiveAutoPlay = false`) is still available; it logs `hint_offer`, `help_click.waitedMs`, and `hintOffers` / `hintOfferUnused` on each `level_done` event.
 - **Help-always overuse.** Unlimited hints let a player chain them to the exit. All hint use is logged (`hints`, `hint_ms`), so you can measure it; capping hints per level would change the condition.

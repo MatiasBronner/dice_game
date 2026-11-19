@@ -27,21 +27,28 @@ const SET=(window.RDM&&SETS[window.RDM.set])?window.RDM.set:"A";
 const DEV=MODE=="dev";
 
 const CFG={
- hintMovesEasy:2,         // moves the ghost die demonstrates on easy levels
- hintMovesMedium:3,       // ...on medium levels (and practice)
- hintMovesHard:5,         // ...on hard levels
+ // How many moves the ghost die shows depends on how far the player is from the exit (d = optimal moves left):
+ // d <= hint1UpTo: 1 move, d <= hint2UpTo: 2, d <= hint3UpTo: 3, d <= hint4UpTo: 4, further: hintMaxMoves.
+ // Roughly a third of what's left, never more than 5 (see DETECTOR.md).
+ hint1UpTo:4,
+ hint2UpTo:6,
+ hint3UpTo:10,
+ hint4UpTo:15,
+ hintMaxMoves:5,
  adaptiveAutoPlay:true,   // adaptive: true = hint plays as soon as the detector fires; false = bulb lights up and waits for a click
  adaptiveLockLoops:2,     // adaptive: the player can't move until the ghost has played the hint this many times (0 = no lock)
  skipAfterSecs:300,       // "Skip level" appears after this long on one level
  // --- struggle detector (see DETECTOR.md) ---
- threshold:6,             // struggle score that fires the detector
+ threshold:8,             // struggle score that fires the detector
  levelGraceSecs:25,       // never fire in the first N seconds of a level
- minGapSecs:20,           // ...or within N seconds of the last hint/fire
- minGapActions:6,         // ...or within N actions of the last hint/fire
+ minGapSecs:40,           // ...or within N seconds of the last hint/fire
+ minGapActions:10,        // ...or within N actions of the last hint/fire
  idleSecs:10,             // every N seconds with no input adds W.idle to the struggle score (no grace period)
  stagnationBase:8,        // actions without a new best distance before "stagnation" starts adding
  stagnationFactor:1.5,    // ...or 1.5 x the remaining optimal distance, whichever is larger
- W:{progress:-3,recovery:-1,discovery:-1,explore:.2,probe:.3,undoNoProgress:.4,stagnation:.5,idle:.05,loop:1,repeatBlock:1.5,deadend:1.5}};
+ loopFree:4,              // revisits allowed since the last progress before looping can count as struggle...
+ loopSlack:2,             // ...and only while the player is more than this many moves further from the exit than their best
+ W:{progress:-3,recovery:-1,discovery:-1,explore:.2,probe:.3,undoNoProgress:.4,revisit:.2,stagnation:.5,idle:.05,loop:1,repeatBlock:1.5,deadend:1.5}};
 
 const CFG_DEFAULT=JSON.parse(JSON.stringify(CFG));
 
@@ -275,7 +282,7 @@ function newS(first,last,set=SET){const st=new Date().toISOString(),pid=nameId(f
   key:`rdm3_${safeId(pid)}_${MODE}${set}${M.session==2?"-2":""}_${st.replace(/[:.]/g,"-")}`,plan:planFor(set),
   screen:`${screen.width}x${screen.height} @${devicePixelRatio||1}x, window ${innerWidth}x${innerHeight}`,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||"")}}
 function begin(first,last){S=newS(first,last);LS.set(ACTIVE,S.key);const pid=S.pid;
- log("session_start",{pid,firstName:first,lastName:last,mode:MODE,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:S.group,assistance:S.cond,ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
+ log("session_start",{pid,firstName:first,lastName:last,mode:MODE,set:S.set,levels:S.plan.map(d=>d.id),session:S.session,group:S.group,assistance:S.cond,cfg:JSON.parse(JSON.stringify(CFG)),ua:navigator.userAgent,screen:S.screen,timezone:S.tz,url:location.href});flush();intro()}
 function resume(o){const set=SETS[o.set]?o.set:SET;S={pid:o.pid,first:o.first,last:o.last,mode:MODE,set,session:o.session,group:o.group,cond:o.assistance,i:o.i,res:o.levels||[],log:o.events||[],quiz:[],t0:o.t0,started:o.started,seen:o.seen||{},
  sbTo:o.sbTo||0,sbLv:o.sbLv||0,key:o.key,plan:planFor(set),screen:o.screen,tz:o.tz};log("session_resume",{atLevel:S.i});flush();
  if(S.i>=S.plan.length)end();else startLevel()}
@@ -353,7 +360,7 @@ function startLevel(){const def=S.plan[S.i];
  if(def.rule=="bottom"&&!S.seen.bottom)return interstitial("bottom");
  L=loadLevel(def);save();
  G={r:L.start[0],c:L.start[1],o:O0.slice(),hist:[],moves:0,undos:0,blocked:0,t:now(),lastAct:now(),done:false,skipped:false,
-  hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,discovered:false,
+  hints:0,autoHints:0,hintMs:0,offers:0,hint:null,offer:false,lastHintAt:0,actsSinceHint:99,msg:"",msgInfo:false,lastD:null,sinceProgress:0,loops:0,discovered:false,
   visits:new Map(),allStates:new Set(),restarts:0,movesBefore:0,blockSeen:new Set(),score:0,maxScore:0,recent:[],fires:0,
   tr:{acts:[],prevT:0,firstMoveMs:null,rolls:0,opt:0,nonOpt:0,dead:0,revisits:0,repeatBlocks:0,idles:0,tiles:{spin:0,flip:0},hidden:0,hiddenAt:null,maxPause:0,dts:[],hints:[],follow:null,bestDist:null}};
  G.best=dist();G.lastD=G.best;G.tr.bestDist=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
@@ -401,7 +408,7 @@ function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=
 function restart(){if(!G||G.done||DLG||hintLocked())return;endHint("restart");const prev=G.moves;
  G.restarts++;G.visits.forEach((_,k)=>G.allStates.add(k));
  G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
- G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;
+ G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;G.loops=0;
  rec("restart",{movesSoFar:prev,...posx()});followStep("restart");
  if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesSoFar:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
 function undo(){if(!G||G.done||!G.hist.length||DLG||hintLocked())return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
@@ -416,10 +423,15 @@ function evalState(kind,dir,tile){const W_=CFG.W,d0=G.lastD,d=dist(),k=skey(G.r,
  if(d==Infinity){type="deadend";w=W_.deadend}
  else if(d<G.best){G.best=d;type="progress";w=W_.progress}
  else if(kind=="undo"&&G.lastD==Infinity){type="recovery";w=W_.recovery}
+ else if(kind=="undo"){type="undo";w=W_.undoNoProgress}     // undo always lands on a visited state; that's not a loop
  else if(v==0){type="explore";w=W_.explore}
- else{type="loop";w=W_.loop}
- if(kind=="undo"&&type!="progress"&&type!="recovery")w+=W_.undoNoProgress;
- if(type=="progress")G.sinceProgress=0;
+ else{G.loops++;                                               // returning to a state you've been in
+  // Looping is fine while exploring. It only counts as struggle when it's excessive (more than loopFree
+  // revisits since the last progress) AND the player has drifted away from the exit (more than loopSlack
+  // moves further than their best).
+  if(G.loops>CFG.loopFree&&d>G.best+CFG.loopSlack){type="loop";w=W_.loop}
+  else{type="revisit";w=W_.revisit}}
+ if(type=="progress"){G.sinceProgress=0;G.loops=0}
  else{G.sinceProgress++;const budget=Math.max(CFG.stagnationBase,Math.ceil(CFG.stagnationFactor*(d==Infinity?G.best:d)));if(G.sinceProgress>budget){w+=W_.stagnation;stag=true}}
  if(G.discovered){w+=W_.discovery;G.discovered=false}
  G.lastD=d;struggle(type,w);
@@ -444,15 +456,16 @@ function checkDetector(){if(!gate())fire(false)}
 function fire(forced){
  const live=assist()&&S.cond=="adaptive";G.fires++;log("detector_fire",{score:+G.score.toFixed(2),recent:G.recent.join(" "),cause:dominant(),will_hint:live,forced:!!forced});
  if(live){if(CFG.adaptiveAutoPlay)giveHint(true);else{G.offer=true;G.offers++;G.offerAt=now();G.lastHintAt=now();G.actsSinceHint=0;G.score=0;log("hint_offer");drawBulb()}}
- else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}}
+ else{G.score=0;G.lastHintAt=now();G.actsSinceHint=0}
+ G.sinceProgress=0;G.loops=0}
 function dominant(){if(dist()==Infinity)return"deadend";const c={};G.recent.forEach(t=>c[t]=(c[t]||0)+1);
  for(const t of["repeat_block","loop","deadend","idle"])if((c[t]||0)>=2)return t;return G.sinceProgress>CFG.stagnationBase?"stagnation":"general"}
-/* ---- hints: ghost die shows the next optimal rolls (2 easy, 3 medium, 5 hard), looping until any input.
+/* ---- hints: ghost die shows the next optimal rolls (1-5, by distance to the exit; see hintLen), looping until any input.
    An automatic (adaptive) hint locks input until the ghost has played it CFG.adaptiveLockLoops times. ---- */
-function hintLen(){return L.tier=="easy"?CFG.hintMovesEasy:L.tier=="hard"?CFG.hintMovesHard:CFG.hintMovesMedium}
+function hintLen(d){return d<=CFG.hint1UpTo?1:d<=CFG.hint2UpTo?2:d<=CFG.hint3UpTo?3:d<=CFG.hint4UpTo?4:CFG.hintMaxMoves}
 const hintLocked=()=>!!(G&&G.hint&&G.hint.lockUntil&&now()<G.hint.lockUntil);
-function giveHint(auto){if(!G||G.done)return;const score0=G.score,cause=dominant();G.hints++;if(auto)G.autoHints++;G.offer=false;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;
- const p=bfs(L,G.r,G.c,G.o),seq=p?p.slice(0,hintLen()):null;
+function giveHint(auto){if(!G||G.done)return;const score0=G.score,cause=dominant();G.hints++;if(auto)G.autoHints++;G.offer=false;G.lastHintAt=now();G.actsSinceHint=0;G.score=0;G.sinceProgress=0;G.loops=0;
+ const p=bfs(L,G.r,G.c,G.o),seq=p?p.slice(0,hintLen(p.length)):null;
  G.hint={auto,seq,deadend:!p,t0:now()};
  // hint record: when it came, how, what it showed, and (filled in later) how long it was watched and whether it was followed
  const T=G.tr,t=now()-G.t,info={n:T.hints.length+1,t,how:auto?(S.cond=="adaptive"&&CFG.adaptiveAutoPlay?"automatic":"offered"):"clicked",sinceLastActionMs:t-T.prevT,
@@ -554,7 +567,7 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
 const DEVK="rdm3_dev_prefs";let devTimer=null;
 function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
-const CFG_HELP={hintMovesEasy:"moves the ghost shows on easy levels",hintMovesMedium:"…on medium levels",hintMovesHard:"…on hard levels",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",adaptiveLockLoops:"adaptive: no moves until the hint has played N times (0 = off)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle: add W.idle every N s without input",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
+const CFG_HELP={hint1UpTo:"hint shows 1 move when ≤ this many moves from the exit",hint2UpTo:"…2 moves when ≤ this",hint3UpTo:"…3 moves when ≤ this",hint4UpTo:"…4 moves when ≤ this",hintMaxMoves:"…and this many when further away",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",adaptiveLockLoops:"adaptive: no moves until the hint has played N times (0 = off)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle: add W.idle every N s without input",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance",loopFree:"revisits allowed since last progress…",loopSlack:"…loops count only when this far behind best"};
 function devStop(){clearInterval(devTimer);clearInterval(idleTimer);if(S&&!S.finished)flush();if(G)endHint("dev_leave");S=null;L=null;G=null;Q=null;V.host=null;stopGhost()}
 function useLevels(on){if(window.RDM_EDITOR)LV=on?RDM_EDITOR.merged():RDM_EDITOR.original()}
 function devPlaytest(id){const pr=devPrefs();const cond=MODES[pr.cond]&&MODES[pr.cond].session==1?pr.cond:"control";useLevels(true);
