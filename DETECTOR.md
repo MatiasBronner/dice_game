@@ -12,7 +12,9 @@ Because every level is solved exactly (BFS over position × die orientation), th
 | **Discovering** a special tile for the first time | Repeating the **same blocked move** from the same state (not learning from the feedback) |
 | **Recovering** from a dead end with Undo | Being in a **dead end** (exit unreachable without undoing) |
 | Trying a move once and getting blocked (testing a rule) | Many actions **without any new progress** (stagnation) |
-| Exploring **new states** or going back over old ones (only a small cost, so long aimless wandering eventually adds up) | **Idling**: no input (a little for every 10 s) |
+| Exploring **new states** or going back over old ones (only a small cost, so long aimless wandering eventually adds up) | |
+
+**Idle time isn't scored.** A pause can be thinking, and thinking is productive, so time without input never adds to the struggle score or triggers a hint. It's still logged for analysis: an `idle` event and an entry in the play record for every 10 s without input (`idleSecs`), and `idle_checks` per level.
 
 ## Scoring
 
@@ -27,7 +29,6 @@ The detector keeps a struggle score per level (never below 0). Each action adds 
 | `probe` (first block of this move from this state) | +0.3 | Testing a hypothesis |
 | `undo` without progress | +0.4 | An undo always lands on a state you've been in, so it is scored as `undo`, not as a loop |
 | `stagnation` | +0.5 per action | Once actions since the last progress (or the last fire or hint) exceed max(8, 1.5 × remaining optimal distance) |
-| `idle` | +0.05 per 10 s | For every full 10 s without any input, from the player's last action, always (no grace period) |
 | `revisit` (back in a state you've been in) | +0.2 | Same as exploring: going back over ground is a normal part of trying things |
 | `loop` (excessive looping away from the goal) | +1 | Only when *both*: more than 4 revisits since the last progress (`loopFree`), *and* more than 2 moves further from the exit than the player's best (`loopSlack`) |
 | `repeat_block` (same blocked move again) | +1.5 | |
@@ -44,7 +45,7 @@ All of these must hold:
 - at least **40 s** and **10 actions** since the last hint or fire
 - no hint currently showing
 
-After a fire (or any hint), the score, the stagnation count and the loop count all reset to 0, so the player gets a fresh budget before stagnation adds up again. Every fire is logged with the score, the last 8 action types, and a `cause` label (`loop`, `repeat_block`, `deadend`, `idle`, `stagnation` or `general`).
+After a fire (or any hint), the score, the stagnation count and the loop count all reset to 0, so the player gets a fresh budget before stagnation adds up again. Every fire is logged with the score, the last 8 action types, and a `cause` label (`loop`, `repeat_block`, `deadend`, `stagnation` or `general`).
 
 ## What the hint is
 
