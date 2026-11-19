@@ -282,21 +282,21 @@ const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the b
 const INTRO_STEPS=4;
 function intro(step=0){if(!S)return;log("intro_step",{step:step+1});
  const nLev=S.plan.filter(d=>d.phase!="practice").length,twice=CFG.adaptiveLockLoops==1?"once":CFG.adaptiveLockLoops==2?"twice":CFG.adaptiveLockLoops+" times",last=step==INTRO_STEPS-1;
- const help=S.cond=="user"?{h:"Hints",t:`Stuck? Click the lightbulb in the corner of the board, any time. A ghost die will show you the next few rolls.`}
-  :S.cond=="adaptive"?{h:"Hints",t:CFG.adaptiveAutoPlay?`An assistant is watching. When it thinks a hint would help, the lightbulb lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${twice}, then it's your turn again.`:""}`
+ const help=S.cond=="user"?{h:"Hints on demand",tag:"Click the lightbulb",t:`Stuck? Click the lightbulb in the corner of the board, any time. A ghost die will show you the next few rolls. Your next move hides it.`}
+  :S.cond=="adaptive"?{h:"Hint assistant",tag:CFG.adaptiveAutoPlay?(CFG.adaptiveLockLoops>0?`Plays automatically · ${twice}`:"Plays automatically"):"Lights up when ready",t:CFG.adaptiveAutoPlay?`An assistant is watching. When it thinks a hint would help, the lightbulb lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${twice}, then it's your turn again.`:""}`
    :`An assistant is watching. When it thinks a hint would help, the lightbulb lights up. Click it whenever you like and a ghost die will show you the next few rolls.`}
   :{h:"No hints",t:"There are no hints in this game. Take your time and work it out."};
  const screens=[
   {title:"Reach the flag",body:`The goal of the game is to reach the flag <span class="tileChip exit" aria-label="flag square">⚑</span>`,demo:`<div class="demo big" id="dA"></div>`},
   {title:"Rolling changes the top",body:`When you roll the die, the <b>top face</b> changes depending on which way you roll.`,demo:`<div class="demo big" id="dB"><div class="dread" aria-hidden="true">Top <b id="dBtop">1</b></div></div>`},
   {title:"Blue number squares",body:`You can only land on a blue square <span class="tileChip lock" aria-label="blue number square">4</span> if the die will land with that number facing up.`,
-   demo:`<div class="demo big pair" id="dC"><div class="half"><div class="dhost" id="dC1"></div><span class="dcap bad">✕ 2 would be on top</span></div><div class="half"><div class="dhost" id="dC2"></div><span class="dcap good">✓ 4 is on top</span></div></div>`},
+   demo:`<div class="demo big pair" id="dC"><div class="half"><div class="dhost" id="dC1"></div><span class="dcap bad">✕ 4 would be on top, not 6</span></div><div class="half"><div class="dhost" id="dC2"></div><span class="dcap good">✓ 4 is on top, so it fits</span></div></div>`},
   {title:"How to play",body:"",demo:`<div class="howto">
    <div class="hcard"><div class="hk">Move</div><div class="arrows"><kbd class="ku">↑</kbd><kbd class="kl">←</kbd><kbd class="kd">↓</kbd><kbd class="kr">→</kbd></div>
     <p>Roll with the <b>arrow keys</b> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, the arrow buttons next to the board, or swipe on a touch screen.</p></div>
    <div class="hcard"><div class="hk">Fix mistakes</div><div class="fixes"><span class="fbtn">↶ Undo</span><span class="fbtn">⟲ Restart</span></div>
     <p><b>Undo</b> (or <kbd>Z</kbd>) takes back your last roll. <b>Restart</b> puts the die back at the start.</p></div>
-   <div class="hcard hint ${S.cond=="none"?"off":""}"><div class="hk">${help.h}</div>${S.cond=="none"?"":`<div class="bulbBig">${BULB}</div>`}<p>${help.t}</p></div></div>
+   <div class="hcard hint ${S.cond=="none"?"off":""}"><div class="hk">${help.h}</div>${S.cond=="none"?`<div class="noHint">✕</div>`:`<div class="bulbBig ${S.cond}">${BULB}</div><span class="htag">${help.tag}</span>`}<p>${help.t}</p></div></div>
    <p class="introSmall">You'll start with a short practice level, then play ${nLev} levels that get harder as you go. Try to finish each one in as few moves as you can.</p>`}];
  const sc=screens[step];
  app.innerHTML=bar()+`<main class="screen"><div class="sheet intro3" style="--dir:${intro.dir||1}">
@@ -322,7 +322,7 @@ function demoBoard(host,{rows,cols,tiles={},start}){
   async turn(d,deg,ms){const[or,fn,sg]=DROT[d];rot.style.transformOrigin=or;rot.style.transition=`transform ${ms}ms cubic-bezier(.45,.05,.35,1)`;void rot.offsetWidth;rot.style.transform=`${fn}(${sg*deg}deg)`;await sleep(ms)},
   async roll(d){const sh0=B.r,sc0=B.c;B.r+=D[d][0];B.c+=D[d][1];sh.style.transition="left .55s,top .55s";sh.style.left=B.c*DT+"px";sh.style.top=B.r*DT+"px";B.r=sh0;B.c=sc0;
    await B.turn(d,90,550);rot.style.transition="none";rot.style.transform="none";B.o=roll(B.o,d);B.r+=D[d][0];B.c+=D[d][1];B.paint();B.place(false)},
-  async bump(d){await B.turn(d,24,230);await B.turn(d,0,260)}};
+  async bump(d,deg=24){await B.turn(d,deg,300);await sleep(120);await B.turn(d,0,320)}};
  B.paint();B.place(false);return B}
 async function introDemo(step){const still=matchMedia("(prefers-reduced-motion: reduce)").matches,alive=el=>el&&el.isConnected;
  if(step==0){const h=$("#dA"),A=demoBoard(h,{rows:3,cols:3,start:[2,0],tiles:{"0,2":{k:"exit",label:"⚑"}}});if(still)return;
@@ -330,9 +330,10 @@ async function introDemo(step){const still=matchMedia("(prefers-reduced-motion: 
    A.tile(0,2).classList.add("win");h.classList.add("cheer");await sleep(1800);h.classList.add("fade");await sleep(350);A.reset();h.classList.remove("cheer","fade");await sleep(700)}}
  if(step==1){const h=$("#dB"),B=demoBoard(h.appendChild(document.createElement("div")),{rows:3,cols:3,start:[1,1]}),top=$("#dBtop");if(still)return;
   await sleep(700);while(alive(h)){for(const d of"EWNSWESN"){await B.roll(d);top.textContent=B.o[0];top.classList.remove("pop");void top.offsetWidth;top.classList.add("pop");await sleep(750);if(!alive(h))return}}}
- if(step==2){const h=$("#dC"),C1=demoBoard($("#dC1"),{rows:2,cols:2,start:[0,0],tiles:{"1,0":{k:"lock",label:"4"}}}),C2=demoBoard($("#dC2"),{rows:2,cols:2,start:[0,0],tiles:{"0,1":{k:"lock",label:"4"}}});if(still)return;
-  await sleep(800);while(alive(h)){await Promise.all([C1.bump("S"),C2.roll("E")]);C1.tile(1,0).classList.add("no");C2.tile(0,1).classList.add("yes");h.classList.add("shown");
-   await sleep(2200);h.classList.remove("shown");h.classList.add("fade");await sleep(350);C1.reset();C2.reset();h.classList.remove("fade");await sleep(700)}}}
+ if(step==2){const h=$("#dC"),C1=demoBoard($("#dC1"),{rows:1,cols:2,start:[0,0],tiles:{"0,1":{k:"lock",label:"6"}}}),C2=demoBoard($("#dC2"),{rows:1,cols:2,start:[0,0],tiles:{"0,1":{k:"lock",label:"4"}}});if(still)return;
+  // same die, same roll to the right: the 4 that comes up fits the 4 square but not the 6 square
+  await sleep(1400);while(alive(h)){await Promise.all([C1.bump("E",38),C2.roll("E")]);C1.tile(0,1).classList.add("no");C2.tile(0,1).classList.add("yes");h.classList.add("shown");
+   await sleep(2200);h.classList.remove("shown");h.classList.add("fade");await sleep(350);C1.reset();C2.reset();h.classList.remove("fade");await sleep(1400)}}}
 function interstitial(kind){S.seen[kind]=true;log(kind=="bottom"?"rule_change_shown":"assessment_intro_shown");
  const t=kind=="bottom"?["Rule change","Now check the bottom",`For the next levels, numbered squares check the <b>bottom face</b>: the one touching the board, which you can't see. Everything else is unchanged.`]
   :["Nice work","Now on your own",`Training is done. For the last ${LV.immediate.length} levels there are no hints${S.cond!="none"?" and no lightbulb":""}. Do your best.`];
