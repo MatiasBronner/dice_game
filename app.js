@@ -38,10 +38,10 @@ const CFG={
  levelGraceSecs:25,       // never fire in the first N seconds of a level
  minGapSecs:20,           // ...or within N seconds of the last hint/fire
  minGapActions:6,         // ...or within N actions of the last hint/fire
- idleSecs:25,             // idle this long counts as struggle (checked every 5 s)
+ idleSecs:10,             // every N seconds with no input adds W.idle to the struggle score (no grace period)
  stagnationBase:8,        // actions without a new best distance before "stagnation" starts adding
  stagnationFactor:1.5,    // ...or 1.5 x the remaining optimal distance, whichever is larger
- W:{progress:-3,recovery:-1,discovery:-1,explore:.2,probe:.3,undoNoProgress:.4,stagnation:.5,idle:.5,loop:1,repeatBlock:1.5,deadend:1.5}};
+ W:{progress:-3,recovery:-1,discovery:-1,explore:.2,probe:.3,undoNoProgress:.4,stagnation:.5,idle:.05,loop:1,repeatBlock:1.5,deadend:1.5}};
 
 const CFG_DEFAULT=JSON.parse(JSON.stringify(CFG));
 
@@ -359,7 +359,7 @@ function startLevel(){const def=S.plan[S.i];
  G.best=dist();G.lastD=G.best;G.tr.bestDist=G.best;G.visits.set(skey(G.r,G.c,G.o),1);
  if(document.visibilityState=="hidden")G.tr.hiddenAt=now();
  log("level_start",{opt:L.opt,rule:L.rule,n:L.n,phase:L.phase,tier:L.tier,hash:L.hash,edited:!!(DEV&&window.RDM_EDITOR&&RDM_EDITOR.edited(L.id)&&S.useEdits),assist:assist()?S.cond:"none"});buildGame();
- clearInterval(idleTimer);idleTimer=setInterval(idleTick,5000)}
+ clearInterval(idleTimer);idleTimer=setInterval(idleTick,1000)}
 function dist(){const p=bfs(L,G.r,G.c,G.o);return p?p.length:Infinity}
 /* ---- per-level play record (saved with every level: level_results.actions and .hint_details) ----
    Each action: t = ms since the level started, dt = ms since the player's previous action (decision time),
@@ -419,8 +419,12 @@ function evalState(kind,dir,tile){const W_=CFG.W,d0=G.lastD,d=dist(),k=skey(G.r,
  log("state",{dist:d==Infinity?null:d,cls:type,revisit:v>0,stagnant:stag,sinceProgress:G.sinceProgress,score:+G.score.toFixed(2)});
  if(G.r==L.exit[0]&&G.c==L.exit[1])return finish(false);afterAct()}
 function struggle(type,w){G.score=Math.max(0,G.score+w);G.maxScore=Math.max(G.maxScore,G.score);G.recent.push(type);if(G.recent.length>8)G.recent.shift()}
+/* Idle: +W.idle for every full CFG.idleSecs (10 s) without input, counted from the last action, always. */
 function idleTick(){if(!G||G.done||Q||DLG)return;const idle=(now()-G.lastAct)/1000;
- if(idle>=CFG.idleSecs&&!G.hint){struggle("idle",CFG.W.idle);G.tr.idles++;rec("idle",{secs:Math.round(idle)},false);log("idle",{secs:Math.round(idle),score:+G.score.toFixed(2)});checkDetector()}
+ if(G.idleFrom!==G.lastAct){G.idleFrom=G.lastAct;G.idlePaid=0}
+ const n=Math.floor(idle/CFG.idleSecs);
+ if(n>G.idlePaid){const k=n-G.idlePaid;G.idlePaid=n;for(let i=0;i<k;i++)struggle("idle",CFG.W.idle);G.tr.idles+=k;
+  rec("idle",{secs:Math.round(idle),periods:k},false);log("idle",{secs:Math.round(idle),periods:k,score:+G.score.toFixed(2)});checkDetector()}
  if(!G.skipShown&&(now()-G.t)/1000>=CFG.skipAfterSecs){G.skipShown=true;drawPanel()}}
 function afterAct(){checkDetector();drawPanel()}
 function gate(){const secs=(now()-G.t)/1000,gap=(now()-G.lastHintAt)/1000;
@@ -543,7 +547,7 @@ async function end(){S.finished=new Date().toISOString();log("session_end");Q=nu
 const DEVK="rdm3_dev_prefs";let devTimer=null;
 function devPrefs(){try{return JSON.parse(LS.get(DEVK))||{}}catch(e){return{}}}
 function applyCfg(c){if(!c)return;for(const k in CFG_DEFAULT){if(k=="W"){for(const w in CFG_DEFAULT.W)if(c.W&&typeof c.W[w]=="number")CFG.W[w]=c.W[w]}else if(c[k]!==undefined&&typeof c[k]==typeof CFG_DEFAULT[k])CFG[k]=c[k]}}
-const CFG_HELP={hintMovesEasy:"moves the ghost shows on easy levels",hintMovesMedium:"…on medium levels",hintMovesHard:"…on hard levels",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",adaptiveLockLoops:"adaptive: no moves until the hint has played N times (0 = off)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle counts after N s",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
+const CFG_HELP={hintMovesEasy:"moves the ghost shows on easy levels",hintMovesMedium:"…on medium levels",hintMovesHard:"…on hard levels",adaptiveAutoPlay:"adaptive: play hint as soon as it fires (false = wait for click)",adaptiveLockLoops:"adaptive: no moves until the hint has played N times (0 = off)",skipAfterSecs:"Skip button appears after (s)",threshold:"struggle score that fires",levelGraceSecs:"no firing in first N s",minGapSecs:"min s between fires",minGapActions:"min actions between fires",idleSecs:"idle: add W.idle every N s without input",stagnationBase:"stagnation after N actions…",stagnationFactor:"…or this × remaining distance"};
 function devStop(){clearInterval(devTimer);clearInterval(idleTimer);if(S&&!S.finished)flush();if(G)endHint("dev_leave");S=null;L=null;G=null;Q=null;V.host=null;stopGhost()}
 function useLevels(on){if(window.RDM_EDITOR)LV=on?RDM_EDITOR.merged():RDM_EDITOR.original()}
 function devPlaytest(id){const pr=devPrefs();const cond=MODES[pr.cond]&&MODES[pr.cond].session==1?pr.cond:"control";useLevels(true);

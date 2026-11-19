@@ -12,7 +12,7 @@ Because every level is solved exactly (BFS over position × die orientation), th
 | **Discovering** a special tile for the first time | Repeating the **same blocked move** from the same state (not learning from the feedback) |
 | **Recovering** from a dead end with Undo | Being in a **dead end** (exit unreachable without undoing) |
 | Trying a move once and getting blocked (testing a rule) | Many actions **without any new progress** (stagnation) |
-| Exploring **new states** (only a small cost, so long aimless wandering eventually adds up) | **Idling** 25 s or more |
+| Exploring **new states** (only a small cost, so long aimless wandering eventually adds up) | **Idling**: no input (a little for every 10 s) |
 
 ## Scoring
 
@@ -27,7 +27,7 @@ The detector keeps a struggle score per level (never below 0). Each action adds 
 | `probe` (first block of this move from this state) | +0.3 | Testing a hypothesis |
 | `undo` without progress | +0.4 | Added to the state's own weight |
 | `stagnation` | +0.5 per action | Once actions since the last progress exceed max(8, 1.5 × remaining optimal distance) |
-| `idle` | +0.5 per 5 s check | After 25 s with no input |
+| `idle` | +0.05 per 10 s | For every full 10 s without any input, from the player's last action, always (no grace period) |
 | `loop` (revisited state) | +1 | |
 | `repeat_block` (same blocked move again) | +1.5 | |
 | `deadend` (exit unreachable) | +1.5 | Per action while stuck |

@@ -86,7 +86,7 @@ Everything is saved per participant, per session and per level. **Run `supabase/
 | `spin_uses`, `flip_uses` | Times they rolled onto ↻ / ⇅ |
 | `ms`, `secs`, `first_move_ms` | Time on the level, and time before the first roll |
 | `median_decision_ms`, `mean_decision_ms`, `max_pause_ms` | Time between their actions |
-| `idle_checks`, `hidden_ms` | 5-second idle checks after 25 s without input, and time the tab was hidden (switched away) |
+| `idle_checks`, `hidden_ms` | 10-second periods without any input, and time the tab was hidden (switched away) |
 | `hints`, `auto_hints`, `hint_ms`, `hint_watch_ms` | Hints shown, how many were automatic, and how long they were on screen |
 | `first_hint_ms` | Time from level start to the first hint |
 | `hints_followed`, `hint_moves_shown`, `hint_moves_followed` | Hints where the player then made every shown move, and shown vs. copied moves in total |
