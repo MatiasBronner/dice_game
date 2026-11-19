@@ -55,7 +55,7 @@ Levels are generated and verified by `tools/gen_levels.py`, which writes `levels
 
 ### Restart
 
-**⟲ Restart** (next to Undo) is always available while a level is in progress. It puts the die back on the start square. The move counter is **not** reset: moves keep counting across restarts, so `level_results.moves` and `efficiency` include every attempt. Each restart is logged as a `restart` event with the moves so far, and the `level_done` event records `restarts`. Time, undos, blocks and hints also keep counting across restarts.
+**⟲ Restart** (next to Undo) is always available while a level is in progress. It puts the die back on the start square. The move counter is **not** reset: moves keep counting across restarts, so `level_results.moves` and `efficiency` include every attempt. Each restart is logged as a `restart` event with the moves so far, and the `level_done` event records `restarts`. Time, undos, blocks and hints also keep counting across restarts. The struggle detector does start over: its score goes back to 0 (see [DETECTOR.md](DETECTOR.md)).
 
 ```sql
 select s.pid, s.mode, e.data->>'id' as level, (e.data->>'restarts')::int as restarts,

@@ -403,14 +403,16 @@ function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=
  G.tr.rolls++;if(G.tr.firstMoveMs==null)G.tr.firstMoveMs=now()-G.t;
  log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move",d,m.tile)}
 /* Restart: die back to the start. The move counter is NOT reset: moves, undos, blocks, hints and time all
-   keep counting for the level, so moves (and totalMoves) cover every attempt. The struggle score is kept, but
-   progress tracking restarts from the start square so the next attempt can earn "progress" again. */
+   keep counting for the level, so moves (and totalMoves) cover every attempt. The struggle detector starts
+   over: the score, its recent actions and progress tracking all reset to the start square, so a fresh attempt
+   is judged on its own. The minimum gap since the last hint or fire still applies. */
 function restart(){if(!G||G.done||DLG||hintLocked())return;endHint("restart");const prev=G.moves;
  G.restarts++;G.visits.forEach((_,k)=>G.allStates.add(k));
  G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
  G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;G.loops=0;
+ const score0=G.score;G.score=0;G.recent=[];
  rec("restart",{movesSoFar:prev,...posx()});followStep("restart");
- if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesSoFar:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
+ if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesSoFar:prev,restarts:G.restarts,scoreBefore:+score0.toFixed(2),score:0});drawPanel()}
 function undo(){if(!G||G.done||!G.hist.length||DLG||hintLocked())return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
 /* ---- struggle detector v2: productive vs unproductive (see DETECTOR.md) ---- */
 function evalState(kind,dir,tile){const W_=CFG.W,d0=G.lastD,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);

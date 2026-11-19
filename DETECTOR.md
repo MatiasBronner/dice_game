@@ -33,7 +33,7 @@ The detector keeps a struggle score per level (never below 0). Each action adds 
 | `repeat_block` (same blocked move again) | +1.5 | |
 | `deadend` (exit unreachable) | +1.5 | Per action while stuck |
 
-**Restart** doesn't change the struggle score. It does reset progress tracking (best distance, the stagnation and loop counts, and revisits) to the start square, so a fresh attempt can earn "progress" again and walking back over the opening isn't counted as looping.
+**Restart** starts the detector over: the struggle score goes back to 0 (the score before is logged as `scoreBefore` on the `restart` event), and progress tracking (best distance, the stagnation and loop counts, and revisits) resets to the start square. A fresh attempt is judged on its own, can earn "progress" again, and walking back over the opening isn't counted as looping. The minimum gap since the last hint or fire still applies, so restarting doesn't bring a hint sooner. This is the same in every condition, so the control and help-always groups' logged fires stay comparable with the adaptive group's.
 
 ## When a hint fires
 
