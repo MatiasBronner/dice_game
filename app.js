@@ -285,18 +285,18 @@ function intro(step=0){if(!S)return;log("intro_step",{step:step+1});
  const help=S.cond=="user"?{h:"Hints on demand",tag:"Click the lightbulb",t:`Stuck? Click the lightbulb in the corner of the board, any time. A ghost die will show you the next few rolls. Your next move hides it.`}
   :S.cond=="adaptive"?{h:"Hint assistant",tag:CFG.adaptiveAutoPlay?(CFG.adaptiveLockLoops>0?`Plays automatically · ${twice}`:"Plays automatically"):"Lights up when ready",t:CFG.adaptiveAutoPlay?`An assistant is watching. When it thinks a hint would help, the lightbulb lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${twice}, then it's your turn again.`:""}`
    :`An assistant is watching. When it thinks a hint would help, the lightbulb lights up. Click it whenever you like and a ghost die will show you the next few rolls.`}
-  :{h:"No hints",t:"There are no hints in this game. Take your time and work it out."};
+  :null;
  const screens=[
-  {title:"Reach the flag",body:`The goal of the game is to reach the flag <span class="tileChip exit" aria-label="flag square">⚑</span>`,demo:`<div class="demo big" id="dA"></div>`},
+  {title:"Reach the flag",body:`The goal of the game is to reach the flag <span class="tileChip exit" aria-label="flag square">⚑</span><span class="sub">Try to reach the end in the fewest moves possible.</span>`,demo:`<div class="demo big" id="dA"></div>`},
   {title:"Rolling changes the top",body:`When you roll the die, the <b>top face</b> changes depending on which way you roll.`,demo:`<div class="demo big" id="dB"><div class="dread" aria-hidden="true">Top <b id="dBtop">1</b></div></div>`},
   {title:"Blue number squares",body:`You can only land on a blue square <span class="tileChip lock" aria-label="blue number square">4</span> if the die will land with that number facing up.`,
    demo:`<div class="demo big pair" id="dC"><div class="half"><div class="dhost" id="dC1"></div><span class="dcap bad">✕ 4 would be on top, not 6</span></div><div class="half"><div class="dhost" id="dC2"></div><span class="dcap good">✓ 4 is on top, so it fits</span></div></div>`},
-  {title:"How to play",body:"",demo:`<div class="howto">
+  {title:"How to play",body:"",demo:`<div class="howto ${S.cond=="none"?"two":""}">
    <div class="hcard"><div class="hk">Move</div><div class="arrows"><kbd class="ku">↑</kbd><kbd class="kl">←</kbd><kbd class="kd">↓</kbd><kbd class="kr">→</kbd></div>
     <p>Roll with the <b>arrow keys</b> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, the arrow buttons next to the board, or swipe on a touch screen.</p></div>
    <div class="hcard"><div class="hk">Fix mistakes</div><div class="fixes"><span class="fbtn">↶ Undo</span><span class="fbtn">⟲ Restart</span></div>
-    <p><b>Undo</b> (or <kbd>Z</kbd>) takes back your last roll. <b>Restart</b> puts the die back at the start.</p></div>
-   <div class="hcard hint ${S.cond=="none"?"off":""}"><div class="hk">${help.h}</div>${S.cond=="none"?`<div class="noHint">✕</div>`:`<div class="bulbBig ${S.cond}">${BULB}</div><span class="htag">${help.tag}</span>`}<p>${help.t}</p></div></div>
+    <p><b>Undo</b> (or <kbd>Z</kbd>) takes back your last roll. <b>Restart</b> puts the die back at the start. Your moves keep counting.</p></div>
+   ${S.cond=="none"?"":`<div class="hcard hint"><div class="hk">${help.h}</div><div class="bulbBig ${S.cond}">${BULB}</div><span class="htag">${help.tag}</span><p>${help.t}</p></div>`}</div>
    <p class="introSmall">You'll start with a short practice level, then play ${nLev} levels that get harder as you go. Try to finish each one in as few moves as you can.</p>`}];
  const sc=screens[step];
  app.innerHTML=bar()+`<main class="screen"><div class="sheet intro3" style="--dir:${intro.dir||1}">
@@ -363,14 +363,14 @@ function act(d){if(!G||G.done||DLG||hintLocked())return;endHint("move");const m=
  if(m.tile){const first=!S.log.some(e=>e.type=="tile"&&e.tile==m.tile);
   if(first){G.msg="Something happened to the die on that square.";G.msgInfo=true;G.discovered=true}log("tile",{tile:m.tile,first})}
  log("move",{d,r:m.r,c:m.c,o:m.o.join("")});evalState("move")}
-/* Restart: die back to the start, move counter back to 0. Undos, blocks, hints and time keep counting
-   for the level; moves from earlier attempts are kept in totalMoves. The struggle score is kept, but
+/* Restart: die back to the start. The move counter is NOT reset: moves, undos, blocks, hints and time all
+   keep counting for the level, so moves (and totalMoves) cover every attempt. The struggle score is kept, but
    progress tracking restarts from the start square so the next attempt can earn "progress" again. */
 function restart(){if(!G||G.done||DLG||hintLocked())return;endHint("restart");const prev=G.moves;
- G.restarts++;G.movesBefore+=G.moves;G.visits.forEach((_,k)=>G.allStates.add(k));
- G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.moves=0;G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
+ G.restarts++;G.visits.forEach((_,k)=>G.allStates.add(k));
+ G.r=L.start[0];G.c=L.start[1];G.o=O0.slice();G.hist=[];G.msg="";G.msgInfo=false;G.lastAct=now();G.actsSinceHint++;
  G.visits=new Map([[skey(G.r,G.c,G.o),1]]);G.best=dist();G.lastD=G.best;G.sinceProgress=0;
- if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesBefore:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
+ if(V.ok)aSlide(G.r,G.c,G.o);log("restart",{movesSoFar:prev,restarts:G.restarts,score:+G.score.toFixed(2)});drawPanel()}
 function undo(){if(!G||G.done||!G.hist.length||DLG||hintLocked())return;endHint("undo");[G.r,G.c,G.o]=G.hist.pop();G.moves++;G.undos++;G.lastAct=now();G.actsSinceHint++;G.msg="";if(V.ok)aSlide(G.r,G.c,G.o);log("undo",{});evalState("undo")}
 /* ---- struggle detector v2: productive vs unproductive (see DETECTOR.md) ---- */
 function evalState(kind){const W_=CFG.W,d=dist(),k=skey(G.r,G.c,G.o),v=G.visits.get(k)||0;G.visits.set(k,v+1);
@@ -460,7 +460,7 @@ function drawPanel(){const pn=$("#panel");if(!pn||!G)return;const dn=G.done,ll=l
  <div class="rule"><span class="sw">#</span><div>Numbered squares check the <b>${L.rule=="top"?"top face":"bottom face"}</b>${L.rule=="bottom"?" (touching the board)":""}.</div></div>
  ${netHTML(G.o)}
  <div class="pad"><button class="n" data-d="N" aria-label="Roll up">▲</button><button class="w" data-d="W" aria-label="Roll left">◀</button><button class="s" data-d="S" aria-label="Roll down">▼</button><button class="e" data-d="E" aria-label="Roll right">▶</button></div>
- <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button><button id="rst" ${dn?"disabled":""} title="Start this level again from the beginning">⟲ Restart</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
+ <div class="acts"><button id="un" ${dn||!G.hist.length?"disabled":""}>↶ Undo</button><button id="rst" ${dn?"disabled":""} title="Put the die back at the start (your moves keep counting)">⟲ Restart</button>${!dn&&G.skipShown?`<button id="sk" class="btn-ghost">Skip level</button>`:""}</div>
  <div class="msg ${G.msgInfo?"info":""}" role="status">${G.msg}</div>`;
  pn.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>act(b.dataset.d));
  if(hintLocked())pn.querySelectorAll(".pad button,.acts button").forEach(b=>b.disabled=true);

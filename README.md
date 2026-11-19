@@ -56,10 +56,7 @@ Levels are generated and verified by `tools/gen_levels.py`, which writes `levels
 
 ### Restart
 
-**⟲ Restart** (next to Undo) is always available while a level is in progress. It puts the die back on the start square and resets the move counter to 0. In the data:
-- `level_results.moves` and `efficiency` describe the **final attempt** (what the player sees).
-- The `level_done` event also records `restarts` and `totalMoves` across all attempts. Each restart is logged as a `restart` event with the moves made before it.
-- Time, undos, blocks and hints keep counting across restarts.
+**⟲ Restart** (next to Undo) is always available while a level is in progress. It puts the die back on the start square. The move counter is **not** reset: moves keep counting across restarts, so `level_results.moves` and `efficiency` include every attempt. Each restart is logged as a `restart` event with the moves so far, and the `level_done` event records `restarts`. Time, undos, blocks and hints also keep counting across restarts.
 
 ```sql
 select s.pid, s.mode, e.data->>'id' as level, (e.data->>'restarts')::int as restarts,

@@ -293,3 +293,6 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:8px 12px;
 @keyframes clickTap{0%,60%,100%{transform:none}70%{transform:scale(.8)}}
 .noHint{display:grid;place-items:center;width:62px;height:62px;margin:4px auto 6px;border-radius:50%;border:1px dashed rgba(200,210,255,.3);color:var(--muted);font-size:22px}
 .hcard.hint.off .hk{color:var(--muted)}
+.itext p .sub{display:block;margin-top:14px;font-size:clamp(16px,1.7vw,18px);font-weight:400;color:var(--muted)}
+.howto.two{grid-template-columns:repeat(2,1fr)}
+@media (max-width:760px){.howto.two{grid-template-columns:1fr}}
