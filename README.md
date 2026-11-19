@@ -8,21 +8,19 @@ A 3D puzzle game for a study on AI assistance and skill acquisition. Players rol
 
 Site: https://matiasbronner.github.io/dice_game/ (experimenter page listing the links)
 
-| Path | Condition | Level set |
+| Path | Group | Session |
 |---|---|---|
 | `/play/1/` | **Development**: for the research team, not participants | any (chosen on the setup screen) |
-| `/play/2a/`, `/play/2b/` | Control: no help | A, B |
-| `/play/3a/`, `/play/3b/` | Adaptive: when the struggle detector fires, the hint plays automatically and the player watches it twice before moving | A, B |
-| `/play/4a/`, `/play/4b/` | Help always available (lightbulb) | A, B |
-| `/play/2a-2/` … `/play/4b-2/` | **Session 2** for each group: same group, **no help for anyone** | A, B |
+| `/play/2a/` | Control: no help | Session 1, Set A |
+| `/play/3a/` | Adaptive: when the struggle detector fires, the hint plays automatically and the player watches it twice before moving | Session 1, Set A |
+| `/play/4a/` | Help always available (lightbulb) | Session 1, Set A |
+| `/play/2b/`, `/play/3b/`, `/play/4b/` | Same three groups | **Session 2, Set B: no help for anyone** |
 
 The paths are numbered, not named, so participants can't tell which condition they're in.
 
-**Each participant plays twice**, once with each set. **Session 1** uses the plain link for their group (help as the group says). **Session 2** uses their group's `-2` link, where nobody gets help (hints are off, the lightbulb is hidden; the struggle detector still logs when it *would* have fired). Counterbalance the sets: in each group, half the participants play A then B (`3a` → `3b-2`) and the other half B then A (`3b` → `3a-2`). Saved as `sessions.session` (1 or 2), `sessions.level_set` (A or B), `sessions.grp` (the group) and `sessions.assistance` (`none` in session 2). On session 2's How-to-play screen, the adaptive and help-always groups are told there are no hints this time; the control group sees nothing about hints.
+**Design:** each participant plays twice in their group. **Session 1 (Set A)** is where they learn the game, with their group's kind of help (none, adaptive, or always available). **Session 2 (Set B)** levels the playing field: nobody gets help, so performance there shows how well each group learned. Send a participant their group's `a` link first and the same group's `b` link second. In session 2 hints are off and the lightbulb is hidden; the struggle detector still logs when it *would* have fired. On session 2's How-to-play screen the adaptive and help-always groups are told there are no hints this time, and the control group sees nothing about hints. Saved as `sessions.session` (1 or 2), `sessions.level_set` (A or B), `sessions.grp` (the group) and `sessions.assistance` (`none` in session 2).
 
-### Sign-in and repeat testing
-
-Participants sign in with their **first and last name**. Their participant ID (`pid`) is the name normalised to lowercase with accents and spacing ignored, so "Matías  Bronner" and "matias bronner" are both `matias-bronner`. Each time someone plays, a new row is added to `sessions` with the same `pid`, so repeated testing builds a history per person, and `participants` keeps their name and group. Two different people with the same full name would share a `pid`. If that's possible in your sample, ask one of them to add a middle initial.
+Because Set A always comes first, set and session go together. The two sets are matched on difficulty (below), so session 2 is a fair test, but a difference between sessions can't be split into "set" and "practice" effects.
 
 ### Development link (1)
 

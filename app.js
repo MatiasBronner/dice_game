@@ -18,7 +18,7 @@ const withSession=(m,n)=>n==2?{...m,session:2,cond:"none"}:m;
 let M=withSession(MODES[MODE],SESSION);
 /* Level sets: the 30 training levels split into two sets of 15 (5 easy, 5 medium, 5 hard), matched on
    best-solution length and lock detour, each with a level that needs ↻ (easy) and one that needs ⇅ (medium).
-   Each study link plays one set; give half of your participants A first and the other half B first.
+   Set A is session 1 (with the group's help); Set B is session 2 (no help for anyone, see play/*b).
    Levels are played in ID order, so difficulty still ramps up. A level deleted in the editor is simply left out. */
 const SETS={
  A:["T01","T02","T04","T09","T10","T11","T12","T16","T17","T18","T21","T23","T25","T28","T29"],

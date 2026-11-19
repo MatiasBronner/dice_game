@@ -5,24 +5,24 @@
 <title>Rolling Die Maze · Study links</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=4.7">
+<link rel="stylesheet" href="app.css?v=4.8">
 </head><body><div id="app">
 <header class="bar"><div class="mark"><svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="6" fill="#f8f3e8"/><circle cx="8" cy="8" r="2.2" fill="#1b2140"/><circle cx="13" cy="13" r="2.2" fill="#ffb547"/><circle cx="18" cy="18" r="2.2" fill="#1b2140"/></svg>Rolling Die Maze</div><div class="barR"><span class="chip">Experimenter</span></div></header>
 <main class="screen"><div class="sheet wide">
-<div class="eyebrow">Study links</div><h1 style="font-size:32px;margin-top:4px">Send each participant one link</h1><p class="mu" style="margin-bottom:0">Each participant plays twice, once with each level set: session 1 with their group's help, session 2 (the <code>-2</code> links) with no help. Link 1 is for testing the game yourself.</p>
+<div class="eyebrow">Study links</div><h1 style="font-size:32px;margin-top:4px">Send each participant one link</h1><p class="mu" style="margin-bottom:0">Each participant plays twice in their group: <b>session 1 (Set A)</b> to learn the game with their group's help, then <b>session 2 (Set B)</b> with no help for anyone, to compare how well each group learned. Link 1 is for testing the game yourself.</p>
 <p class="mu">The link decides the condition and the level set. Paths are numbered so participants can't tell which group they're in. Participants sign in with their first and last name, so everyone they play is linked to the same person, however many times you test them.</p>
 <div class="links" id="links"></div>
-<div class="note"><b>Each session:</b> one practice level, then that set's 15 levels (5 easy, 5 medium, 5 hard) with the group's assistance. No quiz. <b>Session 1</b> uses the plain links (help as the group says). <b>Session 2</b> uses the links ending in <code>-2</code>: same group, but <b>no help for anyone</b>. <b>Counterbalancing:</b> in each group, half the participants get Set A in session 1 and Set B in session 2 (e.g. <code>3a</code> then <code>3b-2</code>), the other half B then A (<code>3b</code> then <code>3a-2</code>). Both sessions are linked to the same person by name.</div>
+<div class="note"><b>Each session:</b> one practice level, then that set's 15 levels (5 easy, 5 medium, 5 hard) with the group's assistance. No quiz. <b>Session 1:</b> send the group's <code>a</code> link (2a, 3a or 4a). <b>Session 2:</b> send the same group's <code>b</code> link (2b, 3b or 4b). Hints are off in every <code>b</code> link; the adaptive and help-always groups are told there are no hints this time. Both sessions are linked to the same person by name.</div>
 <div class="note">Data goes to Supabase: <code>participants</code> (one row per person, with their name), <code>sessions</code> (with <code>level_set</code> = A or B), <code>level_results</code>, <code>events</code>. Use the Table Editor to view and export it. If a participant reloads the page, they can pick up at the level they were on.</div>
 </div></main></div>
 <script>
 const L=[["1","Development","For you: any condition, any set, any level, live detector panel, editable settings. Saved as mode 'dev'"],
- ["2a","Control · Set A","No help"],["2b","Control · Set B","No help"],
- ["3a","Adaptive help · Set A","Hint plays automatically when the struggle detector fires; player watches it twice before moving"],["3b","Adaptive help · Set B","Hint plays automatically when the struggle detector fires; player watches it twice before moving"],
- ["4a","Help always available · Set A","Lightbulb hint any time"],["4b","Help always available · Set B","Lightbulb hint any time"],
- ["2a-2","Session 2 · Control · Set A","No help"],["2b-2","Session 2 · Control · Set B","No help"],
- ["3a-2","Session 2 · Adaptive group · Set A","No help this session"],["3b-2","Session 2 · Adaptive group · Set B","No help this session"],
- ["4a-2","Session 2 · Help-always group · Set A","No help this session"],["4b-2","Session 2 · Help-always group · Set B","No help this session"]];
+ ["2a","Control · Set A · session 1","No help"],
+ ["3a","Adaptive help · Set A · session 1","Hint plays automatically when the struggle detector fires; player watches it twice before moving"],
+ ["4a","Help always available · Set A · session 1","Lightbulb hint any time"],
+ ["2b","Control · Set B · session 2","No help for anyone"],
+ ["3b","Adaptive group · Set B · session 2","No help for anyone"],
+ ["4b","Help-always group · Set B · session 2","No help for anyone"]];
 const base=location.href.replace(/[^/]*$/,"");
 document.getElementById("links").innerHTML=L.map(([n,t,d])=>{const u=base+"play/"+n+"/";return`<div class="link"><div class="k">${n}</div><div><b>${t}</b> <span class="mu">· ${d}</span><br><code>${u}</code></div><div class="row"><a href="${u}" target="_blank" rel="noopener">Open</a><button data-u="${u}">Copy</button></div></div>`}).join("");
 document.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.u);b.textContent="Copied"}catch(e){b.textContent="Copy failed"}setTimeout(()=>b.textContent="Copy",1500)});
