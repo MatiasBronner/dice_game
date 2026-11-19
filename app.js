@@ -278,18 +278,61 @@ function resume(o){const set=SETS[o.set]?o.set:SET;S={pid:o.pid,first:o.first,la
 
 /* ======================= TEXT SCREENS ======================= */
 const faceName=rule=>rule=="top"?"top face":"bottom face (the one touching the board)";
-function intro(){const nLev=S.plan.filter(d=>d.phase!="practice").length;
- const help=S.cond=="user"?`<p>Stuck? Click the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner of the board. A ghost die will show you the next few rolls.</p>`
-  :S.cond=="adaptive"?(CFG.adaptiveAutoPlay?`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${CFG.adaptiveLockLoops==1?"once":CFG.adaptiveLockLoops==2?"twice":CFG.adaptiveLockLoops+" times"}, then it's your turn again.`:""}</p>`
-  :`<p>An assistant is watching. When it thinks a hint would help, the lightbulb <span class="bulbDemo">${BULB}</span> in the top-right corner lights up. Click it whenever you like and a ghost die will show you the next few rolls.</p>`):"";
- app.innerHTML=bar()+`<main class="screen"><div class="sheet wide"><div class="introGrid"><div class="showcase" id="sc"></div><div>
- <div class="eyebrow">${M.label}</div><h1 class="bigtitle">Roll it.<br>Read it.<br>Get out.</h1>
- <p>Roll the die one square at a time. A <b style="color:var(--lock)">numbered</b> square can only be entered if the die's <b>top face</b> shows that number after the roll. Reach the <b style="color:var(--exit)">⚑</b> exit.</p>
- <p>Some squares have special markings. Nobody will tell you what they do. You'll have to find out.</p>${help}
- <div class="keys"><span><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to roll</span><span><kbd>Z</kbd> to undo</span><span>Swipe on touch screens</span></div>
- <p class="mu">Try to finish each level in as few moves as you can. You'll start with a short practice level, then play ${nLev} levels that get harder as you go.</p>
- <button class="btn-p" id="b">Begin</button></div></div></div></main>`;
- showcase($("#sc"));$("#b").onclick=startLevel;$("#b").focus()}
+/* Start screens: three rules, each with a small dice demo, then a screen on controls and this condition's hints. */
+const INTRO_STEPS=4;
+function intro(step=0){if(!S)return;log("intro_step",{step:step+1});
+ const nLev=S.plan.filter(d=>d.phase!="practice").length,twice=CFG.adaptiveLockLoops==1?"once":CFG.adaptiveLockLoops==2?"twice":CFG.adaptiveLockLoops+" times",last=step==INTRO_STEPS-1;
+ const help=S.cond=="user"?{h:"Hints",t:`Stuck? Click the lightbulb in the corner of the board, any time. A ghost die will show you the next few rolls.`}
+  :S.cond=="adaptive"?{h:"Hints",t:CFG.adaptiveAutoPlay?`An assistant is watching. When it thinks a hint would help, the lightbulb lights up and a ghost die shows you the next few rolls.${CFG.adaptiveLockLoops>0?` Watch it play ${twice}, then it's your turn again.`:""}`
+   :`An assistant is watching. When it thinks a hint would help, the lightbulb lights up. Click it whenever you like and a ghost die will show you the next few rolls.`}
+  :{h:"No hints",t:"There are no hints in this game. Take your time and work it out."};
+ const screens=[
+  {title:"Reach the flag",body:`The goal of the game is to reach the flag <span class="tileChip exit" aria-label="flag square">⚑</span>`,demo:`<div class="demo big" id="dA"></div>`},
+  {title:"Rolling changes the top",body:`When you roll the die, the <b>top face</b> changes depending on which way you roll.`,demo:`<div class="demo big" id="dB"><div class="dread" aria-hidden="true">Top <b id="dBtop">1</b></div></div>`},
+  {title:"Blue number squares",body:`You can only land on a blue square <span class="tileChip lock" aria-label="blue number square">4</span> if the die will land with that number facing up.`,
+   demo:`<div class="demo big pair" id="dC"><div class="half"><div class="dhost" id="dC1"></div><span class="dcap bad">✕ 2 would be on top</span></div><div class="half"><div class="dhost" id="dC2"></div><span class="dcap good">✓ 4 is on top</span></div></div>`},
+  {title:"How to play",body:"",demo:`<div class="howto">
+   <div class="hcard"><div class="hk">Move</div><div class="arrows"><kbd class="ku">↑</kbd><kbd class="kl">←</kbd><kbd class="kd">↓</kbd><kbd class="kr">→</kbd></div>
+    <p>Roll with the <b>arrow keys</b> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, the arrow buttons next to the board, or swipe on a touch screen.</p></div>
+   <div class="hcard"><div class="hk">Fix mistakes</div><div class="fixes"><span class="fbtn">↶ Undo</span><span class="fbtn">⟲ Restart</span></div>
+    <p><b>Undo</b> (or <kbd>Z</kbd>) takes back your last roll. <b>Restart</b> puts the die back at the start.</p></div>
+   <div class="hcard hint ${S.cond=="none"?"off":""}"><div class="hk">${help.h}</div>${S.cond=="none"?"":`<div class="bulbBig">${BULB}</div>`}<p>${help.t}</p></div></div>
+   <p class="introSmall">You'll start with a short practice level, then play ${nLev} levels that get harder as you go. Try to finish each one in as few moves as you can.</p>`}];
+ const sc=screens[step];
+ app.innerHTML=bar()+`<main class="screen"><div class="sheet intro3" style="--dir:${intro.dir||1}">
+  <div class="ihead"><span class="eyebrow">Dice Game</span><span class="istep">${step+1} of ${INTRO_STEPS}</span></div>
+  <div class="ibody">${last?`<h1 class="ititle">${sc.title}</h1>${sc.demo}`:`${sc.demo}<div class="itext"><h1 class="ititle">${sc.title}</h1><p>${sc.body}</p></div>`}</div>
+  <div class="inav"><button id="ib" ${step?"":"style=\"visibility:hidden\""}>← Back</button>
+   <div class="dots" aria-hidden="true">${[...Array(INTRO_STEPS)].map((_,i)=>`<i class="${i==step?"on":i<step?"done":""}"></i>`).join("")}</div>
+   <button class="btn-p" id="b">${last?"Begin":"Next →"}</button></div></div></main>`;
+ $("#ib").onclick=()=>{intro.dir=-1;intro(step-1)};$("#b").onclick=()=>{intro.dir=1;last?startLevel():intro(step+1)};$("#b").focus();
+ introDemo(step)}
+/* ---- start-screen demos: small CSS 3D dice that roll by the game's own rules (no WebGL needed) ---- */
+const DT=40,DROT={E:["100% 50% 0","rotateY",1],W:["0% 50% 0","rotateY",-1],N:["50% 0% 0","rotateX",1],S:["50% 100% 0","rotateX",-1]};
+function demoBoard(host,{rows,cols,tiles={},start}){
+ host.innerHTML=`<div class="dboard" style="width:${cols*DT}px;height:${rows*DT}px">${[...Array(rows*cols)].map((_,i)=>{const r=i/cols|0,c=i%cols,t=tiles[r+","+c];
+  return`<div class="dtile ${t?t.k:""}" data-rc="${r},${c}" style="left:${c*DT}px;top:${r*DT}px"><span>${t?t.label:""}</span></div>`}).join("")}
+  <div class="dshadow"></div><div class="dpos"><div class="drot"><div class="dcube">${["t","b","n","s","e","w"].map(f=>`<div class="dface f${f}"></div>`).join("")}</div></div></div></div>`;
+ const q=x=>host.querySelector(x),rot=q(".drot"),pos=q(".dpos"),sh=q(".dshadow"),F={};["t","b","n","s","e","w"].forEach(f=>F[f]=q(".f"+f));
+ const B={r:start[0],c:start[1],o:O0.slice(),
+  tile:(r,c)=>q(`[data-rc="${r},${c}"]`),
+  paint(){const[t,n,e]=B.o;[["t",t],["b",7-t],["n",n],["s",7-n],["e",e],["w",7-e]].forEach(([f,v])=>F[f].innerHTML=faceSVG(v))},
+  place(anim){[pos,sh].forEach(el=>{el.style.transition=anim?"left .55s cubic-bezier(.45,.05,.35,1),top .55s cubic-bezier(.45,.05,.35,1)":"none";el.style.left=B.c*DT+"px";el.style.top=B.r*DT+"px"})},
+  reset(){B.r=start[0];B.c=start[1];B.o=O0.slice();rot.style.transition="none";rot.style.transform="none";B.paint();B.place(false);host.querySelectorAll(".dtile").forEach(t=>t.classList.remove("win","yes","no"))},
+  async turn(d,deg,ms){const[or,fn,sg]=DROT[d];rot.style.transformOrigin=or;rot.style.transition=`transform ${ms}ms cubic-bezier(.45,.05,.35,1)`;void rot.offsetWidth;rot.style.transform=`${fn}(${sg*deg}deg)`;await sleep(ms)},
+  async roll(d){const sh0=B.r,sc0=B.c;B.r+=D[d][0];B.c+=D[d][1];sh.style.transition="left .55s,top .55s";sh.style.left=B.c*DT+"px";sh.style.top=B.r*DT+"px";B.r=sh0;B.c=sc0;
+   await B.turn(d,90,550);rot.style.transition="none";rot.style.transform="none";B.o=roll(B.o,d);B.r+=D[d][0];B.c+=D[d][1];B.paint();B.place(false)},
+  async bump(d){await B.turn(d,24,230);await B.turn(d,0,260)}};
+ B.paint();B.place(false);return B}
+async function introDemo(step){const still=matchMedia("(prefers-reduced-motion: reduce)").matches,alive=el=>el&&el.isConnected;
+ if(step==0){const h=$("#dA"),A=demoBoard(h,{rows:3,cols:3,start:[2,0],tiles:{"0,2":{k:"exit",label:"⚑"}}});if(still)return;
+  await sleep(600);while(alive(h)){for(const d of"ENEN"){await A.roll(d);await sleep(180);if(!alive(h))return}
+   A.tile(0,2).classList.add("win");h.classList.add("cheer");await sleep(1800);h.classList.add("fade");await sleep(350);A.reset();h.classList.remove("cheer","fade");await sleep(700)}}
+ if(step==1){const h=$("#dB"),B=demoBoard(h.appendChild(document.createElement("div")),{rows:3,cols:3,start:[1,1]}),top=$("#dBtop");if(still)return;
+  await sleep(700);while(alive(h)){for(const d of"EWNSWESN"){await B.roll(d);top.textContent=B.o[0];top.classList.remove("pop");void top.offsetWidth;top.classList.add("pop");await sleep(750);if(!alive(h))return}}}
+ if(step==2){const h=$("#dC"),C1=demoBoard($("#dC1"),{rows:2,cols:2,start:[0,0],tiles:{"1,0":{k:"lock",label:"4"}}}),C2=demoBoard($("#dC2"),{rows:2,cols:2,start:[0,0],tiles:{"0,1":{k:"lock",label:"4"}}});if(still)return;
+  await sleep(800);while(alive(h)){await Promise.all([C1.bump("S"),C2.roll("E")]);C1.tile(1,0).classList.add("no");C2.tile(0,1).classList.add("yes");h.classList.add("shown");
+   await sleep(2200);h.classList.remove("shown");h.classList.add("fade");await sleep(350);C1.reset();C2.reset();h.classList.remove("fade");await sleep(700)}}}
 function interstitial(kind){S.seen[kind]=true;log(kind=="bottom"?"rule_change_shown":"assessment_intro_shown");
  const t=kind=="bottom"?["Rule change","Now check the bottom",`For the next levels, numbered squares check the <b>bottom face</b>: the one touching the board, which you can't see. Everything else is unchanged.`]
   :["Nice work","Now on your own",`Training is done. For the last ${LV.immediate.length} levels there are no hints${S.cond!="none"?" and no lightbulb":""}. Do your best.`];
