@@ -44,6 +44,20 @@ alter table level_results add column if not exists path                 text;
 
 
 -- One row per action in a level (a spreadsheet-friendly copy of level_results.actions).
+-- Quiz answers (the quiz is no longer shown, but the save function still writes here, so the table must exist).
+-- If this table is deleted, every save fails with: relation "quiz_answers" does not exist.
+create table if not exists quiz_answers (
+  session_key  text not null references sessions(session_key) on delete cascade,
+  q            int  not null,
+  qtype        text,
+  answer       int,
+  correct      int,
+  ok           boolean,
+  secs         numeric,
+  primary key (session_key, q)
+);
+alter table quiz_answers enable row level security;
+
 create table if not exists level_actions (
   session_key    text not null references sessions(session_key) on delete cascade,
   level          int  not null,           -- position in the session (same as level_results.level)

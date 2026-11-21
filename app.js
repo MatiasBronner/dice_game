@@ -237,7 +237,9 @@ function save(){if(S)LS.set("rdm3_"+S.key,JSON.stringify(exportObj()))}
 function sessionDoc(s){return{key:s.key,pid:s.pid,firstName:s.first||null,lastName:s.last||null,mode:s.mode,session:s.session,group:s.group,assistance:s.cond,set:s.set,started:s.started,finished:s.finished||null,
  status:s.finished?"complete":"in_progress",currentLevel:s.i,levelsTotal:s.plan.length,levels:s.res.slice(s.sbLv||0),quiz:s.quiz,quizScore:s.quiz.length?s.quiz.filter(q=>q.ok).length:null,
  eventCount:s.log.length,skipAfter:CFG.skipAfterSecs,ua:navigator.userAgent,screen:s.screen,timezone:s.tz}}
-async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:txt.length<60000,
+/* keepalive lets a save finish if the page closes, but Chrome gives all keepalive requests in flight one shared
+   64 KB allowance and frees it late, so two big ones back to back fail with "Failed to fetch". Only small saves use it. */
+async function sbRpc(fn,body){const txt=JSON.stringify(body);const r=await fetch(SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{method:"POST",keepalive:new TextEncoder().encode(txt).length<24000,
  headers:Object.assign({apikey:SUPABASE_ANON_KEY,"Content-Type":"application/json"},SUPABASE_ANON_KEY.startsWith("sb_")?{}:{Authorization:"Bearer "+SUPABASE_ANON_KEY}),body:txt});
  if(!r.ok)throw new Error(fn+" "+r.status+" "+(await r.text()).slice(0,300))}
 function sbSync(s=S){if(!SB.on||!s)return Promise.resolve(true);if(s.sbBusy){s.sbAgain=true;return s.sbBusy}

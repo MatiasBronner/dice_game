@@ -204,7 +204,7 @@ The publishable key is designed to be public. All tables have row-level security
 | `participants` | person (`pid`, `first_name`, `last_name`, group) |
 | `sessions` | time someone played (`pid`, name, `mode` = condition, `level_set` = A or B, group, assistance, start/finish, status, device) |
 | `level_results` | level played (`level_id`, `phase`, `tier`, moves, optimal, efficiency, undos, blocks, hints, `hint_ms`, detector fires, time) |
-| `quiz_answers` | quiz question (no longer used) |
+| `quiz_answers` | quiz question (no longer used, but **don't delete it**: the save function writes to it, and every save fails without it) |
 | `events` | logged action: moves, blocks, undos, tiles, hints and how long they were watched, detector fires, idle. The full event is in `data` (jsonb) |
 
 Example: performance by condition, first or second session, and tier; and each person's sessions in order.
